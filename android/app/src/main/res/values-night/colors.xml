@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_surface">#211F26</color>
+    <color name="widget_text">#E6E0E9</color>
+    <color name="widget_subtext">#CAC4D0</color>
+    <color name="widget_tonal">#3A3646</color>
+    <color name="widget_on_tonal">#E8DEF8</color>
+    <color name="widget_primary">#D0BCFF</color>
+    <color name="widget_on_primary">#381E72</color>
+    <color name="widget_active">#5E5486</color>
+    <color name="widget_status_ok">#7FDCA4</color>
+    <color name="widget_status_warn">#FFB870</color>
+</resources>

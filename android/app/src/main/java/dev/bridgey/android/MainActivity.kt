@@ -129,6 +129,9 @@ class MainActivity : ComponentActivity() {
     private var callPermissionsGranted by mutableStateOf(false)
     private var sharedContent by mutableStateOf<SharedContent?>(null)
     private var showOnboarding by mutableStateOf(false)
+    private val widgetFilePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty() && ::pairing.isInitialized) pairing.sendFiles(uris)
+    }
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         refreshPermissionState()
     }
@@ -158,6 +161,10 @@ class MainActivity : ComponentActivity() {
         discovery = bridgey.discovery
         bridgeySettings = bridgey.settings
         sharedContent = intent.toSharedContent()
+        if (intent.getBooleanExtra(EXTRA_PICK_FILES, false)) {
+            intent.removeExtra(EXTRA_PICK_FILES)
+            widgetFilePickerLauncher.launch(arrayOf("*/*"))
+        }
         startForegroundService(Intent(this, BridgeyConnectionService::class.java))
         setContent {
             BridgeyTheme {
@@ -216,6 +223,10 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         sharedContent = intent.toSharedContent()
+        if (intent.getBooleanExtra(EXTRA_PICK_FILES, false)) {
+            intent.removeExtra(EXTRA_PICK_FILES)
+            widgetFilePickerLauncher.launch(arrayOf("*/*"))
+        }
     }
 
     private fun Intent.toSharedContent(): SharedContent? {
@@ -327,6 +338,10 @@ class MainActivity : ComponentActivity() {
             },
             "Export Bridgey diagnostics",
         ))
+    }
+
+    companion object {
+        const val EXTRA_PICK_FILES = "dev.bridgey.android.extra.PICK_FILES"
     }
 }
 

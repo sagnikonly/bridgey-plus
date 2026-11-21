@@ -88,6 +88,10 @@ class BridgeyApplication : Application() {
             }.collect { updateMacWidgets(this@BridgeyApplication) }
         }
         applicationScope.launch {
+            combine(pairing.remoteBattery, pairing.quickActions.media, pairing.clipboardSyncPaused) { _, _, _ -> Unit }
+                .collect { updateMacWidgets(this@BridgeyApplication) }
+        }
+        applicationScope.launch {
             pairing.remoteFeatures.collect { features ->
                 if (features[BridgeyFeature.BATTERY] != false) lastBatteryIntent?.let(::publishBattery)
             }
