@@ -1,398 +1,111 @@
-# Bridgey
+# Bridgey+
 
-[![Build](https://github.com/singeol/bridgey/actions/workflows/ci.yml/badge.svg)](https://github.com/singeol/bridgey/actions/workflows/ci.yml)
-[![Security](https://github.com/singeol/bridgey/actions/workflows/security.yml/badge.svg)](https://github.com/singeol/bridgey/actions/workflows/security.yml)
-[![Latest release](https://img.shields.io/github/v/release/singeol/bridgey)](https://github.com/singeol/bridgey/releases/latest)
-[![License: MIT](https://img.shields.io/github/license/singeol/bridgey)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-7C5CE6.svg)](LICENSE)
+[![Platform: Android & macOS](https://img.shields.io/badge/Platform-Android%20%7C%20macOS-38D399.svg)](#building--installing)
+[![Local-First](https://img.shields.io/badge/Sync-Local%20Wi--Fi%20%C2%B7%20AES--GCM-CFC0FF.svg)](#security--privacy)
 
-[Website and documentation](https://bridgey.ai/) ·
-[Download the latest release](https://github.com/singeol/bridgey/releases/latest)
+**Bridgey+** is an open-source, local-first continuity companion between **Android** and **macOS**—bringing automatic clipboard sync, multi-file & folder transfers, Mac media & remote controls, screen viewing, and a **Material 3 Expressive** Android experience over your local Wi-Fi network with no accounts, no cloud servers, and no telemetry.
 
-Bridgey is an open-source, local-first bridge between Android and macOS. It aims
-to provide a small, native and extensible subset of Apple Continuity and KDE
-Connect without accounts, telemetry, or a mandatory cloud service. A Linux
-client can later implement the same public protocol without Android changes.
+> **Upstream attribution:** Bridgey+ is an independent community fork of [singeol/bridgey](https://github.com/singeol/bridgey) (MIT License). All original protocol and core architecture credit belongs to the upstream Bridgey project.
 
-> Current release: v0.5.0. Android and macOS clients support
-> secure pairing, automatic reconnect, clipboard sharing, file transfer,
-> Android notification forwarding, battery status, Find Device, and starting a
-> phone call from macOS over the local network. Discovery data is intentionally
-> treated as untrusted.
+---
 
-## MVP scope
+## Android App Preview
 
-- Explicit two-device pairing with a shared verification code
-- Persistent TCP connections with application-layer AES-GCM encryption and pinned peer signing identities
-- Plain-text and HTML clipboard synchronization with a safe payload limit
-- Streaming file transfer with progress and cancellation
-- Android notification forwarding to native macOS notifications
-- Android battery status on macOS
-- Find Device in both directions
-- Start a phone call from selected text or the macOS clipboard
+<p align="center">
+  <img src="docs/images/android-home.png" alt="Bridgey+ Android Home Screen" width="280" />
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/images/android-settings.png" alt="Bridgey+ Android Settings Screen" width="280" />
+</p>
 
-The current release deliberately starts with a small local-first feature set.
-Communication, remote-control, screen-sharing, and optional relay features are
-planned in later phases below and will require separate security and platform
-feasibility reviews.
+### Frequency-First Material 3 Expressive UI
+- **3-tab navigation (`Home · Activity · Settings`)** with a compact top Mac status strip showing connection status, Mac battery, and sync state.
+- **Adaptive Home**: The top slot automatically surfaces what matters right now—live transfer progress, incoming links from your Mac, or a one-tap reconnect card when offline—while keeping your core controls in a fixed, muscle-memory order.
+- **Ambient Clipboard**: Shows your last synced snippet with a quick **Send now** button and tap-to-pause toggle.
+- **Adaptive Now Playing**: Appears automatically when Spotify or Apple Music is active on your Mac, with album art, seek bar, and a spring-animated shape-morphing Play/Pause control.
+- **Searchable, Outcome-Based Settings**: Plain-language toggles, one-tap presets (**Everything**, **Essentials**, **Privacy-first**), and inline permission fixes right where you need them.
 
-## Roadmap
+---
 
-The roadmap describes intended direction rather than fixed release dates.
-Bridgey 1.0 is defined as a stable, secure local Android–macOS companion, not
-as complete feature parity with KDE Connect. Experimental plugins do not block
-the stable release.
+## Features
 
-### v0.2.1 — settings and quality
+### Seamless Sync & Transfers
+- **Automatic two-way clipboard sync**: Copy text or HTML on your MacBook and paste immediately on Android—no extra button press. On Android, copying while Bridgey+ is open (or switching to Bridgey+) auto-syncs to your Mac. Sensitive/concealed password-manager clips are automatically skipped, and echo loops are prevented.
+- **Multi-file & folder transfers**: Pick or drag-and-drop multiple files or entire folders at once. Files transfer sequentially in a visible queue with per-file cancel, **Cancel all**, deterministic non-destructive naming, and batched Finder reveal on macOS.
+- **Browse shared Android folders from Mac**: Explicitly share chosen Android folders via Storage Access Framework and browse/download files directly from a native macOS folder browser window.
+- **Android Share-Sheet target**: Send files or web links to your Mac straight from any Android app.
 
-- [x] Synchronize feature availability between connected devices
-- [x] Add a native macOS Settings window and clearer unavailable-feature states
-- [x] Add lint, unit-test, CodeQL, dependency-review, and Dependabot workflows
-- [x] Audit build tools, libraries, and refresh GitHub Actions
-- [x] Migrate Android to AGP 9 and built-in Kotlin in a separately validated change
-- [x] Complete device testing of settings changes and publish the patch release
+### Remote Control & Continuity
+- **Mac media controls**: Play/pause, skip tracks, seek, and adjust Spotify or Apple Music volume from your phone.
+- **Quick Mac actions**: Lock screen, put Mac to sleep, turn off display, start screensaver, mute/adjust system volume, and launch allowlisted apps or macOS Shortcuts—available from Home, an Android Home-screen widget, and Android Device Controls.
+- **Browser tab & link handoff**: Send your active Safari or Chrome tab from Mac to Android, or send links from Android to open on Mac.
+- **View-only phone screen sharing** *(opt-in)*: Mirror your Android screen to a native macOS window with per-session consent on Android.
+- **Notifications & Calls**: Mirror Android notifications (with inline replies & per-app filters) and view/control incoming phone calls from your Mac.
+- **Ping, Find Device & Battery**: Check Mac/Android battery status, send a quick ping, or ring either device to locate it.
+- **Multi-device sessions**: Stay connected to multiple paired devices simultaneously and switch your active target anytime.
 
-### v0.3.0 — reliability
+---
 
-- [x] Add Android–macOS protocol integration tests with deterministic generated identities
-- [x] Add malformed-message, interrupted-transfer, and reconnect test scenarios
-- [x] Improve simultaneous transfer history, retry, and recovery behavior
-- [x] Add structured diagnostics that can be exported without private content
+## Security & Privacy
 
-### v0.4.0 — platform integration
+- **100% Local-First**: Devices discover each other over local Wi-Fi (`_bridgey._tcp.local.`) and communicate directly over TCP—no cloud relay, no accounts, no analytics.
+- **End-to-End Encrypted**: Explicit two-device pairing with a 6-digit verification code, pinned peer signing identities (stored in macOS Keychain & Android Keystore), and application-layer **AES-GCM** encryption.
+- **Privacy Safeguards**: Concealed/sensitive clipboard items are excluded from auto-sync, diagnostics exports strip all personal content, and you can wipe all local Bridgey+ data in one tap from Settings.
 
-- [x] Add an Android share target for sending files and text to a trusted device
-- [x] Add drag-and-drop file sending on macOS
-- [x] Add richer clipboard content after text synchronization is fully hardened
-- [x] Improve accessibility, localization readiness, and first-run guidance
+---
 
-### v0.5.0 — notifications and communication
+## Building & Installing
 
-- [x] Synchronize notification dismissal/removal state between Android and macOS
-- [x] Support notification action buttons and inline replies when Android exposes them
-- [x] Add per-application notification filters and a private local history
-- [x] Research SMS viewing/replies and document the permission-safe notification-action scope
-- [x] Show live call state with explicit Answer, Decline, and Hang Up controls
-- [x] Start a validated phone call from selected macOS text or the clipboard
+This repository is a monorepo with two native apps sharing a common protocol in [`protocol/`](protocol/):
+- **macOS** ([`macos/`](macos/)): Native Swift / SwiftUI (Swift Package Manager)
+- **Android** ([`android/`](android/)): Native Kotlin / Jetpack Compose (Gradle)
 
-### v0.6.0 — media and quick actions
+### macOS
+Requirements: macOS 14+ with Xcode Command Line Tools (Swift 5.10+).
 
-- [x] Control Music/Spotify on macOS from Android: play/pause, previous/next, seek, and player volume
-- [x] Show bounded now-playing metadata and local Music artwork when exposed by the player
-- [x] Optionally pause the selected player while a phone call is ringing or active
-- [x] Send and explicitly open web links in either direction
-- [x] Add a lightweight Ping action separate from Find Device
-- [x] Show Mac battery status on Android
-- [x] Add an Android Quick Settings tile and configurable macOS shortcuts
-- [ ] Complete multi-OEM stabilization of the v0.5 call and notification lifecycle
-
-The 0.6 feature implementation is ready for release-candidate testing, not yet
-device-certified. See the [complete 0.6 acceptance checklist](docs/testing-0.6.md).
-Media control is opt-in on Mac and uses public player automation; it is not
-universal browser/system media control. Artwork is optional, local-only, and
-currently limited to Music. Other Android vendors still need physical-device
-validation; unit-test coverage is not a substitute.
-
-### v0.7.0 — remote input and presentations
-
-- [ ] Use Android as an opt-in macOS touchpad and keyboard
-- [ ] Support pointer movement, clicks, scrolling, dragging, and bounded text input
-- [ ] Add presentation actions for previous/next, start/full screen, escape, and laser pointer
-- [ ] Request macOS Accessibility access only when remote input is explicitly enabled
-- [ ] Require a visible active-session indicator and an immediate local stop control
-- [ ] Rate-limit remote input and keep a private audit log of remote-control sessions
-- [ ] Grant remote-control capabilities independently for every trusted device
-
-### v0.8.0 — Files 2.0 and multiple devices
-
-- [ ] Send multiple files and folders with a visible queue and deterministic conflict handling
-- [ ] Resume verified transfers after network interruption or application restart
-- [ ] Browse only Android folders explicitly granted through the system Storage Access Framework
-- [ ] Upload to and download from granted folders without broad storage permissions
-- [ ] Improve Finder, Quick Look, Downloads, and transfer-history integration
-- [ ] Support multiple simultaneous trusted-device sessions with per-device settings
-- [ ] Stress-test cancellation, reconnection, and multi-gigabyte transfers in both directions
-
-### v0.9.0 — automation and experimental communication
-
-- [ ] Add locally configured actions for lock, sleep, screensaver, volume, and launching an app
-- [ ] Permit custom automation only through a local allowlist; never expose a remote shell
-- [ ] Add Android Device Controls/widgets and browser integrations for link handoff
-- [ ] Add a privacy-preserving connection health and diagnostics view
-- [ ] Prototype explicitly confirmed, view-only screen sharing in both directions
-- [ ] Evaluate full SMS conversations, new-message sending, and optional contact names as a
-      separately consented plugin and distribution flavor
-- [ ] Keep notification-based message replies as the permission-light fallback
-
-Screen sharing must display a persistent local indicator and require explicit
-confirmation for each session. Full SMS access depends on distribution-policy
-approval, a privacy policy, prominent disclosure, retention controls, and a
-separate permission review. Neither experimental capability blocks v1.0.
-
-### v1.0.0 — stable local companion
-
-- [ ] Freeze and document the Bridgey Protocol v1 compatibility contract
-- [ ] Preserve trust, settings, and local history through supported upgrades and migrations
-- [ ] Recover reliably after sleep, Wi-Fi changes, process restarts, and interrupted transfers
-- [ ] Run long-lived, malformed-input, fuzz, and cross-platform integration tests
-- [ ] Publish a tested Android/OEM and macOS compatibility matrix
-- [ ] Complete security, privacy, accessibility, and English/Russian localization reviews
-- [ ] Explain every optional permission in onboarding and provide local-data reset controls
-- [ ] Publish checksums, SBOM/provenance, diagnostics guidance, and user/developer documentation
-- [ ] Provide a clear update path and repeatable Android and macOS release packaging
-
-Developer ID signing and notarization remain desirable when an Apple Developer
-membership is available, but do not prevent a documented open-source v1.0.
-
-### Beyond KDE Connect
-
-Bridgey should keep its local-first scope while developing capabilities that
-are more explicit and auditable than a simple feature-for-feature clone:
-
-- [ ] One-time remote permissions, including grants limited to a single session or time window
-- [ ] A private per-device audit log for remote input, automation, files, and sensitive actions
-- [ ] Resumable content-addressed transfers with end-to-end integrity verification
-- [ ] Image and file clipboard handoff with explicit user interaction on Android
-- [ ] QR-assisted pairing and temporary guest pairing without a permanent trust record
-- [ ] Home, Work, and Public Network profiles with conservative defaults on unfamiliar networks
-- [ ] A documented plugin SDK so future clients can extend the public protocol safely
-- [ ] Optional end-to-end encrypted relay without making accounts or cloud service mandatory
-
-### After v1.0 / exploratory
-
-- [ ] Linux client using the public Bridgey protocol
-- [ ] Windows and iOS clients where platform restrictions permit useful background behavior
-- [ ] Bluetooth transport fallback when local-network discovery is unavailable
-- [ ] Optional accounts for recovery without making accounts mandatory
-- [ ] End-to-end encrypted off-LAN relay with direct connections preferred
-- [ ] Full Android screen control only after a separate accessibility and abuse review
-- [ ] Contacts and call-history synchronization only as separately consented plugins
-- [ ] Developer ID signing, notarization, and a polished macOS updater
-
-## Repository
-
-```text
-android/              Kotlin + Jetpack Compose application and core tests
-macos/                Swift + SwiftUI menu-bar application
-protocol/             Machine-readable, platform-independent schemas
-testdata/migrations/  Stored data from released versions, for upgrade tests
-docs/architecture.md  Components, ownership, and delivery sequence
-docs/protocol.md      Version 1 wire protocol
-docs/user-guide.md    Installing, pairing, features, and troubleshooting
-docs/developer-guide.md  Building, testing, and changing the protocol
-docs/compatibility.md Tested Android, vendor, and macOS versions
-docs/diagnostics.md   Diagnostics export and logs
-SECURITY.md            Threat model and cryptographic design
+```bash
+cd macos
+./build-app.sh release
 ```
 
-## Build and run
+Install the generated app bundle:
+```bash
+rm -rf /Applications/Bridgey.app
+cp -R .build/release/Bridgey.app /Applications/Bridgey.app
+open /Applications/Bridgey.app
+```
 
 ### Android
-
-Requirements: Android Studio with JDK 17 and Android SDK 36. Open `android/`,
-let Android Studio use its bundled JDK, then run the `app` configuration on an
-Android 8.0+ device. From the command line, use the versioned Gradle Wrapper:
+Requirements: Android SDK (`ANDROID_HOME` configured) and JDK 17.
 
 ```bash
 cd android
-./gradlew :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
+./gradlew :app:testDebugUnitTest :app:assembleDebug
 ```
 
-Release APKs are signed by GitHub Actions using repository secrets. Never
-commit an Android keystore.
+The APK is generated at:
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
 
-### macOS
-
-Requirements: macOS 13+, Swift 5.10+, and Xcode for producing a signed app.
-The discovery/menu-bar target can also be compiled and tested as a Swift
-package:
-
+Install over USB:
 ```bash
-cd macos
-./build-app.sh
-open .build/debug/Bridgey.app
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The `.app` bundle is required for Notification Center integration. The raw
-SwiftPM executable remains useful for core diagnostics, but macOS does not
-register it as a notification-capable application.
+> **Note on Android 10+ background clipboard:** Android restricts background apps from reading the system clipboard. **Mac → Android** clipboard sync works completely automatically in the background; for **Android → Mac**, copying while Bridgey+ is open—or briefly switching to Bridgey+—auto-sends without tapping any button. You can also use the **Bridgey clipboard** Quick Settings tile or notification action.
 
-Create local release archives with:
+---
 
-```bash
-cd macos
-./package-release.sh
-```
+## Documentation
 
-The current pipeline uses an ad-hoc macOS signature. Users may need to approve
-the app in Privacy & Security until Developer ID signing and notarization are
-configured.
+- [Architecture Overview](docs/architecture.md)
+- [Protocol Specification](docs/protocol.md)
+- [Security Policy](SECURITY.md)
 
-## Automated releases
+---
 
-Pull requests and pushes to `main` build both clients. Tags matching `v*`
-attach a signed Android APK, a macOS DMG/ZIP, SHA-256 checksums, and CycloneDX
-SBOMs to a GitHub Release, and record GitHub build provenance attestations. See
-[docs/releasing.md](docs/releasing.md#verifying-a-download) to verify a download.
+## License
 
-Configure these GitHub Actions secrets before creating the first tag:
-
-- `ANDROID_KEYSTORE_BASE64`
-- `ANDROID_STORE_PASSWORD`
-- `ANDROID_KEY_ALIAS`
-- `ANDROID_KEY_PASSWORD`
-
-Back up the original Android keystore and passwords permanently. Every future
-update must be signed with the same key.
-
-Local-network discovery works best on real devices on the same Wi-Fi network.
-The macOS executable may require local-network permission when prompted.
-
-## Permissions and privacy
-
-Bridgey asks for access only when the related feature needs it:
-
-- Android notifications let the foreground connection, transfer progress,
-  received files, and Find Device controls remain visible.
-- Android notification access is optional and is used only to forward a
-  notification's application name, title, and text to the paired Mac.
-- Android Phone access is optional and requested only when the user enables
-  call status and controls. `CALL_PHONE` starts validated calls,
-  `READ_PHONE_STATE` distinguishes ringing from active calls, and
-  `ANSWER_PHONE_CALLS` enables Answer, Decline, and Hang Up. Bridgey does not
-  request contacts or call-log access. Without this opt-in, a request from Mac
-  opens the system dialer through an Android notification for confirmation.
-- macOS local-network access is required for Bonjour discovery and direct
-  encrypted connections to Android devices.
-- macOS notifications are optional and are requested only when the user enables
-  Android notification display on the Mac.
-- File access is scoped to the files and folders selected by the user and the
-  Bridgey receive directory (`Downloads/Bridgey`).
-- Android shared folders are optional. A paired Mac can browse and download
-  only from folders added under **Shared folders** in Android Settings through
-  the system folder picker, and can add files to them only after you allow it
-  there. Bridgey does not request broad storage permission.
-- File access is scoped to a file selected by the user and the Bridgey receive
-  directory (`Downloads/Bridgey`).
-- Experimental screen sharing (phone to Mac, view only) is off by default on
-  both devices. Each session starts only after a tap in Bridgey and Android's
-  own screen capture confirmation; `FOREGROUND_SERVICE_MEDIA_PROJECTION` lets
-  the capture run in a foreground service whose notification shows Stop for as
-  long as the screen is shared. The Mac only displays the stream and needs no
-  Screen Recording access.
-
-Bridgey does not request location, contacts, SMS, call-log, camera, microphone,
-Mac screen recording, Accessibility, Input Monitoring, or Full Disk Access.
-Permission denial disables only the corresponding optional integration.
-
-## Settings
-
-Open **Settings** on Android or the gear menu on macOS to:
-
-- change the name advertised to nearby Bridgey devices;
-- enable Clipboard, File transfer, Folder transfer, Notification forwarding,
-  Battery status, Find Device, and Calls from Mac globally;
-- override those features for each trusted device or forget its trust record;
-- choose the macOS folder used for received files;
-- start the macOS app automatically at login;
-- see each permission Bridgey can use, why, and whether it is allowed;
-- reset Bridgey on that device, which deletes paired devices, settings, and
-  local history after a confirmation.
-
-To call from macOS, copy a phone number and press **Call** in Bridgey or
-`Control-Option-P`. In applications that expose macOS Services, select a phone
-number and choose **Services → Call with Bridgey**. Android uses confirmation
-mode by default: tap the call-request notification to review the number in the
-system dialer. An explicit Android Settings switch enables call status and
-controls. It asks for `CALL_PHONE`, `READ_PHONE_STATE`, and
-`ANSWER_PHONE_CALLS` so Bridgey can start a validated call, distinguish
-ringing from an active call, and answer, decline, or hang up from the paired
-Mac. It does not request contacts or call history, and emergency numbers are
-never dialled directly by Bridgey.
-
-Bridgey can also handle `tel:` links from browsers. In macOS Settings, press
-**Use Bridgey for phone links** once; this explicit action makes Bridgey the
-default phone-link handler. Browsers still show their external-application
-confirmation before opening Bridgey and sending the validated number.
-
-Incoming and active calls appear in a compact floating macOS call panel with
-explicit controls. It stays available across Spaces without activating Bridgey
-or taking focus from the current app; hiding it leaves the same controls in the
-Bridgey menu-bar panel.
-
-Connected devices exchange their effective feature state over the encrypted
-session. A feature is available only when both devices enable it, so controls
-and battery status update immediately on the other device. A file transfer
-already accepted is allowed to finish, while disabling Find Device stops a
-currently playing alert. Android received files remain in `Download/Bridgey`;
-this uses scoped `MediaStore` access and avoids requesting broad storage
-permission.
-
-You can pick or drop several files at once on either device. They are sent one
-after another as a visible queue in the transfer list: each waiting file shows
-**Queued** and can be cancelled on its own, and cancelling all transfers also
-empties the queue. A received file never replaces an existing
-one: macOS adds a number (`photo 2.jpg`) and Android lets the system add one
-(`photo (1).jpg`). Files that arrive on the Mac in quick succession are
-selected together in one Finder window.
-
-With Folder transfer enabled on both devices, folders picked or dropped on the
-Mac are sent to Android with their structure kept, as one entry in the queue.
-Android saves each folder as a new folder in `Download/Bridgey`, numbered when
-the name is taken (`Photos (1)`), so nothing existing is merged or replaced.
-Hidden files, symbolic links and empty folders are not sent or created. A
-folder is limited to 10,000 files and 2,000 subfolders.
-
-With Browse shared folders enabled on both devices, the **Phone** action in
-the Mac menu-bar panel opens a window with the folders shared on Android.
-Downloads arrive in the Mac's received-files folder like any other transfer.
-When Android allows it, **Add Files…** uploads files into the folder being
-viewed; a taken name gets a number and nothing is replaced.
-
-Files received on the Mac record the sending device in Finder's "Where from",
-make the Downloads stack bounce when they land inside Downloads, and offer
-Quick Look and Show in Finder from the File Transfer window.
-
-Recent file transfers remain visible until cleared. An outgoing transfer that
-fails or is interrupted can be retried after the devices reconnect; retrying
-creates a new transfer and starts from byte zero so that integrity verification
-remains simple and deterministic. Each client keeps at most 20 completed or
-interrupted entries in memory.
-
-Settings can export a structured diagnostics JSON file. It contains bounded
-event metadata, application/platform versions, feature states, connection
-state, and transfer counts. It never includes clipboard text, notification
-content, file names, network addresses, or device/session/transfer identifiers.
-Settings on both platforms also shows connection health, which the export
-includes: the route class (local network, shared address space such as a VPN,
-or another network), who opened the connection, heartbeat round trips, the last
-disconnect reason and today's connection attempts. The round trip reuses the
-existing heartbeat, so nothing new is sent, and addresses are never kept.
-See [diagnostics](docs/diagnostics.md) for how to export and read it.
-
-## Development principles
-
-- Core routes envelopes and lifecycle events; it does not understand plugin
-  payloads.
-- Every plugin declares capabilities and owns its message types.
-- Logs may include state transitions, message IDs, and peer IDs, but never
-  secrets or clipboard/notification contents.
-- No data learned through Bonjour/mDNS is trusted before authenticated pairing.
-- Protocol changes are documented in `docs/protocol.md` before implementation.
-
-Suggested debug log categories are `DISCOVERY`, `PAIRING`, `TRANSPORT`, and
-`PLUGIN`. See [the architecture](docs/architecture.md), [wire protocol](docs/protocol.md),
-the [security model](SECURITY.md), [security testing](docs/security-testing.md),
-and the [developer guide](docs/developer-guide.md).
-
-## Contributing
-
-Keep changes narrowly scoped and independently testable. New plugin proposals
-should define capabilities, message schemas, permissions, privacy impact, and
-failure behavior. By contributing, you agree that your contribution is
-licensed under the MIT License.
-
-## Credits
-
-Bridgey is designed and developed by Semyon Mikhailov with the assistance of
-[OpenAI Codex](https://openai.com/codex/). Product decisions, testing, and
-release responsibility remain with the project maintainer.
+MIT License — see [LICENSE](LICENSE) for details.  
+Based on [singeol/bridgey](https://github.com/singeol/bridgey).
