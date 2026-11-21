@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -38,6 +39,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
@@ -55,7 +57,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -327,7 +331,9 @@ private fun BridgeyApp(
     val pingStatus by pairing.pingStatus.collectAsStateWithLifecycle()
     val trustedDevices by pairing.trustedDevices.collectAsStateWithLifecycle()
     val remoteFeatures by pairing.remoteFeatures.collectAsStateWithLifecycle()
+    val connections by pairing.connections.collectAsStateWithLifecycle()
     val settingsState by settings.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var permissionPrompt by remember { mutableStateOf<PermissionPrompt?>(null) }
     var showingSettings by remember { mutableStateOf(false) }
 
@@ -354,8 +360,7 @@ private fun BridgeyApp(
             SettingsScreen(
                 state = settingsState,
                 trustedDevices = trustedDevices,
-                connectedDeviceId = (pairingState as? PairingState.Connected)?.deviceId,
-                remoteFeatures = remoteFeatures,
+                connections = connections,
                 onDeviceNameChanged = onDeviceNameChanged,
                 onGlobalFeatureChanged = { feature, enabled ->
                     settings.setGlobal(feature, enabled)
@@ -369,7 +374,7 @@ private fun BridgeyApp(
                     settings.setForDevice(deviceId, feature, enabled)
                     if (
                         feature == BridgeyFeature.FIND_DEVICE && !enabled &&
-                        (pairingState as? PairingState.Connected)?.deviceId == deviceId
+                        connections.any { it.id == deviceId }
                     ) pairing.stopFinding()
                 },
                 onNotificationApplicationChanged = { packageName, enabled ->
@@ -385,6 +390,9 @@ private fun BridgeyApp(
                 },
                 onForget = pairing::forget,
                 onExportDiagnostics = onExportDiagnostics,
+                onAddSharedFolder = { settings.shareFolder(context.contentResolver, it) },
+                onRemoveSharedFolder = { settings.unshareFolder(context.contentResolver, it) },
+                onSharedFolderUploadsChanged = settings::setSharedFolderUploadsEnabled,
                 modifier = Modifier.padding(padding),
             )
         } else {
@@ -392,6 +400,7 @@ private fun BridgeyApp(
                 peers = peers,
                 trustedIds = trustedIds,
                 pairingState = pairingState,
+                connections = connections,
                 clipboardStatus = clipboardStatus,
                 fileTransfers = fileTransfers,
                 phoneRinging = phoneRinging,
@@ -551,8 +560,7 @@ private fun BridgeyApp(
 private fun SettingsScreen(
     state: BridgeySettingsState,
     trustedDevices: List<TrustedDevice>,
-    connectedDeviceId: String?,
-    remoteFeatures: Map<BridgeyFeature, Boolean>,
+    connections: List<ConnectedDevice>,
     onDeviceNameChanged: (String) -> Unit,
     onGlobalFeatureChanged: (BridgeyFeature, Boolean) -> Unit,
     onDeviceFeatureChanged: (String, BridgeyFeature, Boolean) -> Unit,
@@ -560,9 +568,15 @@ private fun SettingsScreen(
     onDirectCallsChanged: (Boolean) -> Unit,
     onForget: (String) -> Unit,
     onExportDiagnostics: () -> Unit,
+    onAddSharedFolder: (Uri) -> Unit,
+    onRemoveSharedFolder: (SharedFolder) -> Unit,
+    onSharedFolderUploadsChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var editedName by remember(state.deviceName) { mutableStateOf(state.deviceName) }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let(onAddSharedFolder)
+    }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
@@ -627,6 +641,47 @@ private fun SettingsScreen(
             }
         }
 
+        if (state.globalFeatures[BridgeyFeature.FILES_BROWSE] != false) {
+            item { SectionTitle(stringResource(R.string.shared_folders_title)) }
+            item {
+                Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            stringResource(R.string.shared_folders_body),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (state.sharedFolders.isEmpty()) {
+                            Text(stringResource(R.string.shared_folders_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        state.sharedFolders.forEach { folder ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Text(folder.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium)
+                                TextButton(onClick = { onRemoveSharedFolder(folder) }) {
+                                    Text(stringResource(R.string.shared_folders_remove))
+                                }
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = { folderPicker.launch(null) },
+                            enabled = state.sharedFolders.size < BridgeySettings.MAX_SHARED_FOLDERS,
+                        ) { Text(stringResource(R.string.shared_folders_add)) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(stringResource(R.string.shared_folders_uploads), fontWeight = FontWeight.Medium)
+                                Text(
+                                    stringResource(R.string.shared_folders_uploads_body),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(checked = state.sharedFolderUploadsEnabled, onCheckedChange = onSharedFolderUploadsChanged)
+                        }
+                    }
+                }
+            }
+        }
+
         if (state.globalFeatures[BridgeyFeature.NOTIFICATIONS] != false) {
             item { SectionTitle("Notification applications") }
             item {
@@ -678,7 +733,8 @@ private fun SettingsScreen(
                     Text("Choose what this phone may use with this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     BridgeyFeature.entries.forEach { feature ->
                         val globallyEnabled = state.globalFeatures[feature] != false
-                        val disabledRemotely = device.id == connectedDeviceId && remoteFeatures[feature] == false
+                        val disabledRemotely = connections.firstOrNull { it.id == device.id }
+                            ?.link?.remoteFeatures?.get(feature) == false
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.weight(1f)) {
                                 Text(feature.title, color = if (globallyEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -731,6 +787,7 @@ private fun DeviceScreen(
     peers: List<DiscoveredPeer>,
     trustedIds: Set<String>,
     pairingState: PairingState,
+    connections: List<ConnectedDevice>,
     clipboardStatus: String?,
     fileTransfers: Map<String, FileTransferState>,
     phoneRinging: Boolean,
@@ -755,6 +812,10 @@ private fun DeviceScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         val connected = pairingState as? PairingState.Connected
+        if (connected != null && connections.size > 1) {
+            item { SectionTitle(stringResource(R.string.devices_connected_title)) }
+            item { ConnectedDevicesCard(connections, connected.deviceId, pairing::selectDevice, pairing::disconnectByUser) }
+        }
         if (connected != null) {
             item {
                 ConnectedDeviceCard(
@@ -807,7 +868,7 @@ private fun DeviceScreen(
             }
         }
 
-        val visiblePeers = peers.filter { it.deviceIdHint != connected?.deviceId }
+        val visiblePeers = peers.filter { peer -> connections.none { it.id == peer.deviceIdHint } }
         if (visiblePeers.isNotEmpty()) {
             item { SectionTitle("Nearby") }
             items(visiblePeers, key = { it.key }) { peer ->
@@ -838,6 +899,13 @@ private fun DeviceScreen(
             }
         }
 
+        if (connected != null && connections.size <= 1) {
+            item {
+                TextButton(onClick = { pairing.disconnectByUser(connected.deviceId) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.devices_disconnect_named, connected.peerName))
+                }
+            }
+        }
         if (connected != null && connected.deviceId in trustedIds) {
             item {
                 TextButton(onClick = { pairing.forget(connected.deviceId) }, modifier = Modifier.fillMaxWidth()) {
@@ -919,6 +987,48 @@ private fun ConnectedDeviceCard(
             }
             clipboardStatus?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .72f)) }
             pingStatus?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .72f)) }
+        }
+    }
+}
+
+/** Every connected device; actions started on this phone go to the selected one. */
+@Composable
+private fun ConnectedDevicesCard(
+    connections: List<ConnectedDevice>,
+    selectedId: String,
+    onSelect: (String) -> Unit,
+    onDisconnect: (String) -> Unit,
+) {
+    Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 10.dp)) {
+            connections.forEach { device ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .selectable(selected = device.id == selectedId, role = Role.RadioButton, onClick = { onSelect(device.id) })
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = device.id == selectedId, onClick = null)
+                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                        Text(device.name, fontWeight = FontWeight.Medium)
+                        device.link.battery?.let { battery ->
+                            Text(
+                                stringResource(R.string.devices_battery, battery.level),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    TextButton(onClick = { onDisconnect(device.id) }) { Text(stringResource(R.string.devices_disconnect)) }
+                }
+            }
+            Text(
+                stringResource(R.string.devices_target_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
+            )
         }
     }
 }

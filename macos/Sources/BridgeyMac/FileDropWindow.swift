@@ -43,14 +43,20 @@ private struct FileDropView: View {
                 .font(.title2.weight(.semibold))
             Text(L10n.text("drop.detail", fallback: "This window stays open while you switch to Finder."))
                 .foregroundStyle(.secondary)
+            if pairing.connections.count > 1, case let .connected(_, name) = pairing.state {
+                Text(String(format: L10n.text("drop.target", fallback: "Files go to %@"), name))
+                    .foregroundStyle(.secondary)
+            }
 
             VStack(spacing: 10) {
                 Image(systemName: isTargeted ? "arrow.down.doc.fill" : "doc.badge.arrow.up")
                     .font(.system(size: 36))
                     .foregroundStyle(canSend ? Color.accentColor : Color.secondary)
-                Text(canSend
-                     ? L10n.text("drop.ready", fallback: "Drop one or more files anywhere in this area. They are sent one after another.")
-                     : L10n.text("drop.unavailable", fallback: "Connect an Android device and enable File transfer first."))
+                Text(!canSend
+                     ? L10n.text("drop.unavailable", fallback: "Connect an Android device and enable File transfer first.")
+                     : pairing.isFeatureAvailable(.folders)
+                     ? L10n.text("drop.readyFolders", fallback: "Drop files or folders anywhere in this area. They are sent one after another.")
+                     : L10n.text("drop.ready", fallback: "Drop one or more files anywhere in this area. They are sent one after another."))
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
