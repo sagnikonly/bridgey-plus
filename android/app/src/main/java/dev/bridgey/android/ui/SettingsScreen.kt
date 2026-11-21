@@ -4,11 +4,21 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -25,9 +35,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -71,10 +89,10 @@ enum class SettingsSubPage {
     DIAGNOSTICS_AND_RESET,
 }
 
-enum class SettingsPreset(val label: String) {
-    EVERYTHING("Everything"),
-    ESSENTIALS("Essentials"),
-    PRIVACY("Privacy-first"),
+enum class SettingsPreset(val label: String, val icon: ImageVector) {
+    EVERYTHING("Everything", Icons.Rounded.AutoAwesome),
+    ESSENTIALS("Essentials", Icons.Rounded.Bolt),
+    PRIVACY("Privacy", Icons.Rounded.Shield),
 }
 
 data class SettingsPermissionStates(
@@ -130,7 +148,17 @@ internal fun SettingsScreen(
 ) {
     AnimatedContent(
         targetState = subPage,
-        transitionSpec = { fadeIn() togetherWith fadeOut() },
+        transitionSpec = {
+            val forward = targetState != SettingsSubPage.ROOT
+            val spec = tween<androidx.compose.ui.unit.IntOffset>(240, easing = FastOutSlowInEasing)
+            if (forward) {
+                (slideInHorizontally(spec) { it / 4 } + fadeIn(tween(200))) togetherWith
+                    (slideOutHorizontally(spec) { -it / 6 } + fadeOut(tween(140)))
+            } else {
+                (slideInHorizontally(spec) { -it / 4 } + fadeIn(tween(200))) togetherWith
+                    (slideOutHorizontally(spec) { it / 4 } + fadeOut(tween(140)))
+            }
+        },
         label = "settings_subpage",
         modifier = modifier.fillMaxSize(),
     ) { page ->
@@ -362,17 +390,55 @@ private fun SettingsRoot(
             }
         }
 
-        // Preset pills
+        // Expressive connected preset pills
         if (trimmed.isEmpty()) {
             item {
+                val haptics = LocalHapticFeedback.current
+                val presets = SettingsPreset.entries
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
-                    SettingsPreset.entries.forEach { preset ->
+                    presets.forEachIndexed { index, preset ->
                         val selected = activePreset == preset
+                        val bgColor by animateColorAsState(
+                            targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surface,
+                            animationSpec = tween(220, easing = FastOutSlowInEasing),
+                            label = "preset_bg_${preset.name}",
+                        )
+                        val contentColor by animateColorAsState(
+                            targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            animationSpec = tween(220, easing = FastOutSlowInEasing),
+                            label = "preset_fg_${preset.name}",
+                        )
+                        val innerCorner by animateDpAsState(
+                            targetValue = if (selected) 22.dp else 8.dp,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMedium,
+                            ),
+                            label = "preset_corner_${preset.name}",
+                        )
+                        val shape = when (index) {
+                            0 -> RoundedCornerShape(
+                                topStart = 22.dp,
+                                bottomStart = 22.dp,
+                                topEnd = innerCorner,
+                                bottomEnd = innerCorner,
+                            )
+                            presets.lastIndex -> RoundedCornerShape(
+                                topStart = innerCorner,
+                                bottomStart = innerCorner,
+                                topEnd = 22.dp,
+                                bottomEnd = 22.dp,
+                            )
+                            else -> RoundedCornerShape(innerCorner)
+                        }
                         Surface(
                             onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 when (preset) {
                                     SettingsPreset.EVERYTHING -> {
                                         onGlobalFeatureChanged(BridgeyFeature.CLIPBOARD, true)
@@ -410,17 +476,34 @@ private fun SettingsRoot(
                                     }
                                 }
                             },
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                            shape = shape,
+                            color = bgColor,
+                            border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)) else null,
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text(
-                                preset.label,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 11.dp),
-                            )
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp, horizontal = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Icon(
+                                    preset.icon,
+                                    contentDescription = null,
+                                    tint = if (selected) MaterialTheme.colorScheme.primary else contentColor,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Text(
+                                    preset.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    color = contentColor,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }

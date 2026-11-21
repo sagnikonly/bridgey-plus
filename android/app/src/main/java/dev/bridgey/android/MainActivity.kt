@@ -14,6 +14,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Schedule
@@ -481,7 +486,12 @@ private fun BridgeyApp(
             }
         },
     ) { padding ->
-        when (selectedTab) {
+        AnimatedContent(
+            targetState = selectedTab,
+            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+            label = "main_tab_transition",
+        ) { tab ->
+            when (tab) {
             0 -> HomeScreen(
                 homeState = homeState,
                 peers = peers,
@@ -566,6 +576,7 @@ private fun BridgeyApp(
                 },
                 modifier = Modifier.padding(padding),
             )
+            }
         }
     }
 
