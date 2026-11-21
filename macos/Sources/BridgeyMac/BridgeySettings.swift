@@ -15,6 +15,7 @@ enum BridgeyFeature: String, CaseIterable, Identifiable {
     case media
     case calls
     case macActions = "mac_actions"
+    case screen
 
     var id: String { rawValue }
     var title: String {
@@ -31,12 +32,18 @@ enum BridgeyFeature: String, CaseIterable, Identifiable {
         case .media: "Media controls"
         case .calls: "Calls from Mac"
         case .macActions: L10n.text("settings.macActions", fallback: "Mac actions")
+        case .screen: "Show phone screen"
         }
     }
 }
 
 func featureEnabledByLegacyPeer(_ feature: BridgeyFeature) -> Bool {
-    ![.calls, .ping, .links, .media, .folders, .filesBrowse, .macActions].contains(feature)
+    ![.calls, .ping, .links, .media, .folders, .filesBrowse, .macActions, .screen].contains(feature)
+}
+
+/// Media control, Mac actions, and experimental screen sharing stay off until the person turns them on.
+func featureEnabledByDefault(_ feature: BridgeyFeature) -> Bool {
+    ![.media, .macActions, .screen].contains(feature)
 }
 
 func effectiveFeatureEnabled(globalEnabled: Bool, deviceEnabled: Bool?) -> Bool {
@@ -81,7 +88,7 @@ final class BridgeySettings: ObservableObject {
         hasCompletedOnboarding = storedDefaults.bool(forKey: "settings.onboarding.completed")
         notificationHistoryEnabled = storedDefaults.bool(forKey: "settings.notificationHistory.enabled")
         globalFeatures = Dictionary(uniqueKeysWithValues: BridgeyFeature.allCases.map {
-            ($0, storedDefaults.object(forKey: "settings.global.\($0.rawValue)") as? Bool ?? ($0 != .media && $0 != .macActions))
+            ($0, storedDefaults.object(forKey: "settings.global.\($0.rawValue)") as? Bool ?? featureEnabledByDefault($0))
         })
         var perDevice: [String: [BridgeyFeature: Bool]] = [:]
         for (key, value) in storedDefaults.dictionaryRepresentation() where key.hasPrefix("settings.device.") {

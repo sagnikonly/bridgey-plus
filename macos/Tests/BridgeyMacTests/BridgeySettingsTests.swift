@@ -26,5 +26,12 @@ final class BridgeySettingsTests: XCTestCase {
         XCTAssertFalse(featureEnabledByLegacyPeer(.folders))
         XCTAssertFalse(featureEnabledByLegacyPeer(.filesBrowse))
         XCTAssertTrue(featureEnabledByLegacyPeer(.battery))
+        XCTAssertFalse(featureEnabledByLegacyPeer(.screen))
+    }
+
+    func testMediaAndScreenSharingAreOffByDefault() {
+        XCTAssertFalse(featureEnabledByDefault(.media))
+        XCTAssertFalse(featureEnabledByDefault(.screen))
+        XCTAssertTrue(featureEnabledByDefault(.clipboard))
     }
 }

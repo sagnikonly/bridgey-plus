@@ -18,6 +18,7 @@ enum class BridgeyFeature(val key: String, val title: String) {
     MEDIA("media", "Mac media controls"),
     CALLS("calls", "Calls from Mac"),
     MAC_ACTIONS("mac_actions", "Mac actions"),
+    SCREEN("screen", "Share screen with Mac"),
 }
 
 internal fun featureEnabledByLegacyPeer(feature: BridgeyFeature): Boolean =
@@ -29,7 +30,11 @@ internal fun featureEnabledByLegacyPeer(feature: BridgeyFeature): Boolean =
         BridgeyFeature.FOLDERS,
         BridgeyFeature.FILES_BROWSE,
         BridgeyFeature.MAC_ACTIONS,
+        BridgeyFeature.SCREEN,
     )
+
+/** Experimental screen sharing stays off until the person turns it on; everything else starts on. */
+internal fun featureEnabledByDefault(feature: BridgeyFeature): Boolean = feature != BridgeyFeature.SCREEN
 
 data class BridgeySettingsState(
     val deviceName: String,
@@ -156,7 +161,7 @@ class BridgeySettings(context: Context, defaultDeviceName: String) {
 
     private fun load(defaultDeviceName: String): BridgeySettingsState {
         val globals = BridgeyFeature.entries.associateWith {
-            preferences.getBoolean("global.${it.key}", true)
+            preferences.getBoolean("global.${it.key}", featureEnabledByDefault(it))
         }
         val perDevice = mutableMapOf<String, MutableMap<BridgeyFeature, Boolean>>()
         preferences.all.forEach { (key, value) ->

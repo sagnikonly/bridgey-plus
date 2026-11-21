@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.UserManager
 import android.provider.Settings
+import dev.bridgey.android.screen.ScreenShare
 import dev.bridgey.core.discovery.LocalDiscoveryIdentity
 import dev.bridgey.core.discovery.NsdDiscoveryService
 import java.util.UUID
@@ -27,6 +28,8 @@ class BridgeyApplication : Application() {
     lateinit var settings: BridgeySettings
         private set
     internal lateinit var savedMacActions: SavedMacActions
+        private set
+    lateinit var screenShare: ScreenShare
         private set
     var isBridgeyEnabled: Boolean = false
         private set
@@ -53,6 +56,8 @@ class BridgeyApplication : Application() {
         settings = BridgeySettings(this, systemDeviceName)
         val deviceName = settings.state.value.deviceName
         pairing = PairingCoordinator(this, deviceId, deviceName, settings = settings)
+        screenShare = ScreenShare(this, pairing)
+        pairing.screenListener = screenShare
         discovery = NsdDiscoveryService(this, LocalDiscoveryIdentity(deviceId, deviceName))
         applicationScope.launch {
             combine(discovery.peers, pairing.trustedDeviceIds, pairing.connections) { peers, trustedIds, connections ->

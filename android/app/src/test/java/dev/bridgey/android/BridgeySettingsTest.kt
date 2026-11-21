@@ -1,5 +1,6 @@
 package dev.bridgey.android
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -32,5 +33,13 @@ class BridgeySettingsTest {
         assertFalse(featureEnabledByLegacyPeer(BridgeyFeature.FOLDERS))
         assertFalse(featureEnabledByLegacyPeer(BridgeyFeature.FILES_BROWSE))
         assertTrue(featureEnabledByLegacyPeer(BridgeyFeature.BATTERY))
+        assertFalse(featureEnabledByLegacyPeer(BridgeyFeature.SCREEN))
+    }
+
+    @Test
+    fun screenSharingIsOffByDefault() {
+        assertEquals("screen", BridgeyFeature.SCREEN.key)
+        assertFalse(featureEnabledByDefault(BridgeyFeature.SCREEN))
+        assertTrue(featureEnabledByDefault(BridgeyFeature.CLIPBOARD))
     }
 }
