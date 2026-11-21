@@ -235,9 +235,12 @@ final class PairingCoordinator: ObservableObject {
     @Published private(set) var remoteCall: RemoteCallStatus?
     @Published private(set) var callStatus: String?
     @Published private(set) var pingStatus: String?
+    /// Connection health without addresses, names or identifiers.
+    @Published private(set) var connectionHealth = ConnectionHealthSnapshot()
     let quickActions = QuickActions()
     let folderBrowser = PhoneFolderBrowser()
     let mediaController = MediaController()
+    let macActions = MacActions.live()
     let shortcuts = ShortcutSettings()
 
     var trustedDevices: [TrustedDeviceInfo] {
@@ -307,7 +310,11 @@ final class PairingCoordinator: ObservableObject {
     private var receivedFilesToReveal: [URL] = []
     private var revealReceivedFilesWorkItem: DispatchWorkItem?
     private var findDeviceSound: NSSound?
+    private var lastMacActionsState: Data?
     private let diagnostics = BridgeyDiagnostics()
+    private var health = ConnectionHealth() {
+        didSet { if connectionHealth != health.snapshot { connectionHealth = health.snapshot } }
+    }
     private let notificationHistoryStore: NotificationHistoryStore
 
     init(deviceID: String, deviceName: String, settings: BridgeySettings) {
@@ -372,6 +379,14 @@ final class PairingCoordinator: ObservableObject {
                 _ = self.sendQuickPayload(kind: "media.state", payload: payload, to: target.session)
             }
         }
+        macActions.available = { [weak self] in
+            guard let self, case .connected = self.state else { return false }
+            return self.isFeatureAvailable(.macActions)
+        }
+        macActions.onChange = { [weak self] in self?.publishMacActions(force: true) }
+        macActions.record = { [weak self] event, outcome in
+            self?.diagnostics.record(category: "mac_actions", event: event, outcome: outcome)
+        }
         shortcuts.perform = { [weak self] action in
             switch action {
             case .clipboard: self?.sendClipboard()
@@ -415,6 +430,7 @@ final class PairingCoordinator: ObservableObject {
                     self.sendFeatureState()
                     self.mediaController.refresh()
                     self.publishLocalBattery(force: true)
+                    self.publishMacActions(force: true)
                 }
             }
     }
@@ -471,6 +487,7 @@ final class PairingCoordinator: ObservableObject {
     /// A connection the user started. It shows its progress and never disturbs connected devices.
     func pair(host: String, port: Int, peerName: String) {
         diagnostics.record(category: "pairing", event: "connection_started")
+        health.attempt(at: Date())
         guard let endpointPort = NWEndpoint.Port(rawValue: UInt16(port)) else {
             failPairing("Invalid peer port")
             return
@@ -494,6 +511,7 @@ final class PairingCoordinator: ObservableObject {
         current.privateKey = P256.KeyAgreement.PrivateKey()
         current.localEphemeralKey = current.privateKey!.publicKey.x963Representation.base64EncodedString()
         registry.addPending(current, initiatedLocally: true)
+        health.attempt(at: Date())
         scheduleConnectionTimeout(for: current)
         configure(current) { [weak self, weak current] in
             guard let self, let current, current.privateKey != nil else { return }
@@ -534,6 +552,7 @@ final class PairingCoordinator: ObservableObject {
 
     /// Cancels the pairing in progress, or clears its failure. Connected devices stay connected.
     func cancel() {
+        health.disconnected(.user, at: Date())
         if let current = pairingSession {
             current.send(PairingMessage(kind: "pairing.cancel", sessionId: current.id))
             endSession(current)
@@ -554,6 +573,7 @@ final class PairingCoordinator: ObservableObject {
 
     /// Disconnects one device. It connects again when it is next discovered.
     func disconnect(deviceID id: String) {
+        health.disconnected(.user, at: Date())
         reconnectWorkItems.removeValue(forKey: id)?.cancel()
         guard let current = registry.session(for: id) else { return }
         endSession(current)
@@ -970,11 +990,30 @@ final class PairingCoordinator: ObservableObject {
             guard isFeatureAvailable(.media, for: current.remoteDeviceID), let action = payload["action"] as? String,
                   let value = payload["value"] as? String else { reply(false); return }
             mediaController.command(action: action, value: value, completion: reply)
+        } else if message.kind == "quick.request", payload["feature"] as? String == "mac_actions" {
+            guard let requestID = payload["requestId"] as? String, UUID(uuidString: requestID) != nil else { return }
+            macActions.perform(action: payload["action"] as? String ?? "", value: payload["value"] as? String ?? "") {
+                [weak self, weak current] result in
+                guard let self, let current, self.session === current else { return }
+                _ = self.sendQuickPayload(kind: "quick.result", payload: result.payload.merging([
+                    "version": 1, "requestId": requestID, "feature": "mac_actions",
+                ]) { value, _ in value })
+                if result.volume != nil { self.lastMacActionsState = nil }
+            }
         } else {
             quickReplyTarget = current
             quickActions.receive(message.kind, payload: payload)
             quickReplyTarget = nil
         }
+    }
+
+    /// Sends `mac_actions.state` when the feature is available; unforced, only when it changed.
+    private func publishMacActions(force: Bool) {
+        guard session != nil, isFeatureAvailable(.macActions) else { lastMacActionsState = nil; return }
+        let payload = macActions.statePayload()
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+              force || data != lastMacActionsState else { return }
+        if sendQuickPayload(kind: "mac_actions.state", payload: payload) { lastMacActionsState = data }
     }
 
     /// Sends this Mac's battery to every connected device with Battery available.
@@ -1169,7 +1208,8 @@ final class PairingCoordinator: ObservableObject {
             connectionState: stateName,
             transfers: Array(fileTransfers.values),
             localFeatures: localFeatures,
-            remoteFeatures: remoteFeatures
+            remoteFeatures: remoteFeatures,
+            connectionHealth: health.current(at: Date())
         ) else { return }
         let panel = NSSavePanel()
         panel.title = "Export Bridgey Diagnostics"
@@ -1737,6 +1777,7 @@ final class PairingCoordinator: ObservableObject {
     /// An incoming connection is handshaken next to the existing sessions; a duplicate
     /// for an already connected device is resolved only after authentication.
     private func accept(_ connection: NWConnection) {
+        health.attempt(at: Date())
         let current = Session(connection: connection, peerName: "Android device")
         current.initiatedLocally = false
         registry.addPending(current, initiatedLocally: false)
@@ -1755,6 +1796,7 @@ final class PairingCoordinator: ObservableObject {
             if let deviceID = self.endSession(current) {
                 self.deviceDisconnected(deviceID)
                 self.updateClipboardMonitor()
+                self.health.disconnected(current.heartbeatTimedOut ? .heartbeat : .connectionLost, at: Date())
                 self.diagnostics.record(category: "transport", event: "disconnected", outcome: "reconnecting")
                 self.scheduleReconnect(for: deviceID)
             } else if wasPairing {
@@ -1798,6 +1840,7 @@ final class PairingCoordinator: ObservableObject {
             case "heartbeat.pong":
                 guard message.sessionId == current.id, registry.isActive(current) else { return }
                 current.heartbeatSupported = true
+                health.heartbeatAnswered(message.messageId, at: Date())
             case "pairing.offer":
                 guard registry.isPending(current), !current.initiatedLocally, current.pairingKey == nil,
                       let publicKey = message.publicKey else { throw PairingError.invalidMessage }
@@ -1909,6 +1952,7 @@ final class PairingCoordinator: ObservableObject {
                 if isFeatureAvailable(.battery, for: current.remoteDeviceID) {
                     publishLocalBattery(to: current, force: true)
                 }
+                publishMacActions(force: true)
             case "ping.request":
                 try receivePing(message, in: current)
             case "ping.ack":
@@ -2245,6 +2289,7 @@ final class PairingCoordinator: ObservableObject {
                 break
             }
         } catch {
+            health.disconnected(.protocolError, at: Date())
             let wasPairing = pairingSession === current
             let deviceID = endSession(current)
             if let deviceID { deviceDisconnected(deviceID) }
@@ -2261,6 +2306,7 @@ final class PairingCoordinator: ObservableObject {
             pairingSession = nil
             pairingFlow = .idle
         }
+        health.connected(host: endpointHost(current.connection.endpoint), openedHere: current.initiatedLocally, at: Date())
         let deviceID = current.remoteDeviceID
         switch registry.authenticate(current, deviceID: deviceID, peerName: current.peerName) {
         case .rejected:
@@ -2516,19 +2562,25 @@ final class PairingCoordinator: ObservableObject {
             guard let self, let current, self.registry.isActive(current) else { return }
             if heartbeatExpired(supported: current.heartbeatSupported, lastReceivedAt: current.lastReceivedAt) {
                 NSLog("TRANSPORT heartbeat timed out")
+                current.heartbeatTimedOut = true
                 current.close()
                 return
             }
+            let pingID = UUID().uuidString.lowercased()
+            self.health.heartbeatSent(pingID, at: Date())
             current.send(PairingMessage(
                 kind: "heartbeat.ping",
                 sessionId: current.id,
-                messageId: UUID().uuidString.lowercased()
+                messageId: pingID
             ))
             if self.isFeatureAvailable(.battery, for: current.remoteDeviceID) {
                 self.publishLocalBattery(to: current, force: false)
             }
             // One refresh per interval; the media state goes to every phone with Media on.
-            if current.remoteDeviceID == self.targetDeviceID { self.mediaController.refresh() }
+            if current.remoteDeviceID == self.targetDeviceID {
+                self.mediaController.refresh()
+                self.publishMacActions(force: false)
+            }
             self.scheduleHeartbeat(for: current)
         }
         current.heartbeat = work
@@ -2825,6 +2877,7 @@ private final class Session {
     /// Where this Mac dialled, and the trusted device a background reconnect is for.
     var endpoint: (host: String, port: Int, name: String)?
     var dialDeviceID: String?
+    var heartbeatTimedOut = false
     var onMessage: ((PairingMessage) -> Void)?
     var onFailure: (() -> Void)?
     private var buffer = Data()

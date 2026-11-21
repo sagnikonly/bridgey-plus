@@ -17,6 +17,7 @@ enum class BridgeyFeature(val key: String, val title: String) {
     LINKS("links", "Web links"),
     MEDIA("media", "Mac media controls"),
     CALLS("calls", "Calls from Mac"),
+    MAC_ACTIONS("mac_actions", "Mac actions"),
 }
 
 internal fun featureEnabledByLegacyPeer(feature: BridgeyFeature): Boolean =
@@ -27,6 +28,7 @@ internal fun featureEnabledByLegacyPeer(feature: BridgeyFeature): Boolean =
         BridgeyFeature.MEDIA,
         BridgeyFeature.FOLDERS,
         BridgeyFeature.FILES_BROWSE,
+        BridgeyFeature.MAC_ACTIONS,
     )
 
 data class BridgeySettingsState(

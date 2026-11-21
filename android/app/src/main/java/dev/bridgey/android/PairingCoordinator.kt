@@ -184,6 +184,8 @@ class PairingCoordinator(
     private var acceptJob: Job? = null
     private var findRingtone: Ringtone? = null
     private val diagnostics = BridgeyDiagnostics()
+    private val health = ConnectionHealth()
+    internal val connectionHealth: StateFlow<ConnectionHealthSnapshot> = health.snapshot
     private val remoteCallRequest = RemoteCallRequest(appContext)
     private var lastRemoteCallRequestAt = 0L
 
@@ -260,6 +262,7 @@ class PairingCoordinator(
 
     /** Cancels the pairing in progress or clears its failure. Connected devices stay connected. */
     fun cancel() {
+        health.disconnected(DisconnectReason.USER, System.currentTimeMillis())
         val current = pairingSession
         pairingSession = null
         current?.send(Message(kind = "pairing.cancel", sessionId = current.id))
@@ -286,6 +289,7 @@ class PairingCoordinator(
 
     /** Disconnects one device; other sessions stay. */
     fun disconnect(deviceId: String) {
+        health.disconnected(DisconnectReason.USER, System.currentTimeMillis())
         val current = registry.sessionFor(deviceId) ?: return
         registry.remove(current)
         current.close()
@@ -1091,8 +1095,11 @@ class PairingCoordinator(
             is PairingState.Failed -> "failed"
         }
         val localFeatures = BridgeyFeature.entries.associateWith { settings.isEnabled(it, null) }
-        return diagnostics.report(appContext, stateName, mutableFileTransfers.value.values, localFeatures, mutableRemoteFeatures.value)
+        return diagnostics.report(appContext, stateName, mutableFileTransfers.value.values, localFeatures, mutableRemoteFeatures.value,
+            connectionHealthNow().toJson().put("batteryOptimizationIgnored", batteryOptimizationIgnored(appContext)))
     }
+
+    internal fun connectionHealthNow(): ConnectionHealthSnapshot = health.current(System.currentTimeMillis())
 
     fun clearTransferHistory() {
         val inactiveIds = mutableFileTransfers.value.values.filterNot(FileTransferState::active).map(FileTransferState::id)
@@ -1108,6 +1115,7 @@ class PairingCoordinator(
 
     fun pause() {
         unregisterClipboardListener()
+        health.disconnected(DisconnectReason.USER, System.currentTimeMillis())
         registry.removeAll().forEach(Session::close)
         pairingSession = null
         pairingFlow = PairingState.Idle
@@ -1154,6 +1162,8 @@ class PairingCoordinator(
         current.initiatedLocally = initiatedLocally
         current.reconnectId = reconnectId
         registry.addPending(current, initiatedLocally)
+        health.attempt(System.currentTimeMillis())
+        var heartbeatTimedOut = false
         if (initiatedLocally) {
             if (reconnectId == null) {
                 // A connection the user started replaces an earlier one the user started.
@@ -1194,12 +1204,15 @@ class PairingCoordinator(
                             )
                         ) {
                             android.util.Log.w("Bridgey", "TRANSPORT heartbeat timed out")
+                            heartbeatTimedOut = true
                             break
                         }
+                        val pingId = UUID.randomUUID().toString()
+                        health.heartbeatSent(pingId, SystemClock.elapsedRealtime())
                         if (!current.send(Message(
                                 kind = "heartbeat.ping",
                                 sessionId = current.id,
-                                messageId = UUID.randomUUID().toString(),
+                                messageId = pingId,
                             ))
                         ) break
                     } else if (current.code == null &&
@@ -1216,6 +1229,12 @@ class PairingCoordinator(
         current.reconnectId?.let(dialing::remove)
         val failure = result.exceptionOrNull() as? SessionFailure
         val deviceId = registry.remove(current)
+        if (deviceId != null) {
+            health.disconnected(
+                if (heartbeatTimedOut) DisconnectReason.HEARTBEAT else DisconnectReason.CONNECTION_LOST,
+                System.currentTimeMillis(),
+            )
+        }
         if (pairingSession === current) {
             android.util.Log.w("Bridgey", "PAIRING disconnected before confirmation")
             failPairing(failure?.message ?: "Pairing connection lost")
@@ -1227,7 +1246,7 @@ class PairingCoordinator(
 
     private fun receive(current: Session, message: Message) {
         when (message.kind) {
-            "quick.request", "quick.result", "media.state" -> receiveQuickPayload(current, message)
+            "quick.request", "quick.result", "media.state", "mac_actions.state" -> receiveQuickPayload(current, message)
             "heartbeat.ping" -> {
                 if (message.sessionId != current.id || !registry.isActive(current)) return
                 current.heartbeatSupported = true
@@ -1236,6 +1255,7 @@ class PairingCoordinator(
             "heartbeat.pong" -> {
                 if (message.sessionId == current.id && registry.isActive(current)) {
                     current.heartbeatSupported = true
+                    health.heartbeatAnswered(message.messageId, SystemClock.elapsedRealtime())
                 }
             }
             "pairing.offer" -> {
@@ -2100,6 +2120,7 @@ class PairingCoordinator(
             current.close()
             return
         }
+        health.connected(current.remoteHost, current.initiatedLocally, System.currentTimeMillis())
         trust.save(deviceId, current.peerName, current.remoteIdentityKey!!)
         val ownsPrompt = pairingSession === current
         if (ownsPrompt || pairingFlow is PairingState.Failed) {
@@ -2229,6 +2250,7 @@ class PairingCoordinator(
      * the read loop closes the session and shows [message] when it was the pairing.
      */
     private fun fail(message: String): Nothing {
+        health.disconnected(DisconnectReason.PROTOCOL, System.currentTimeMillis())
         diagnostics.record("protocol", "session_failed", "rejected")
         throw SessionFailure(message)
     }
@@ -2274,6 +2296,8 @@ class PairingCoordinator(
 
     private class Session(private val socket: Socket) {
         val input = BufferedInputStream(socket.getInputStream())
+        /** Used only to classify the route for connection health; never stored or logged. */
+        val remoteHost: String? get() = socket.inetAddress?.hostAddress
         private val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
         var id = ""
         var peerName = "Device"

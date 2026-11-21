@@ -244,6 +244,8 @@ private struct BridgeyPanel: View {
                 }
                 if pairing.isFeatureAvailable(.links) {
                     actionButton("Link", icon: "link") { pairing.quickActions.sendClipboardLink() }
+                    actionButton(L10n.text("browser.tab", fallback: "Tab"), icon: "safari") { pairing.quickActions.sendBrowserTab() }
+                        .help(L10n.text("browser.tab.help", fallback: "Send the current Safari or Chrome tab to Android"))
                 }
             }
             QuickActionsPanel(actions: pairing.quickActions)
@@ -530,6 +532,7 @@ private struct SettingsView: View {
                 }
             }
             MediaSettingsView(media: pairing.mediaController)
+            MacActionsSettingsView(actions: pairing.macActions, featureEnabled: settings.globalFeatures[.macActions] == true)
             ShortcutSettingsView(shortcuts: pairing.shortcuts)
             Section("Notification history") {
                 Toggle("Keep a private local history", isOn: Binding(
@@ -600,6 +603,7 @@ private struct SettingsView: View {
                 }
             }
             Section("Diagnostics") {
+                ConnectionHealthView(health: pairing.connectionHealth)
                 Text("Exports a bounded event log without clipboard text, notification content, file names, addresses, or device identifiers.")
                     .font(.caption).foregroundStyle(.secondary)
                 Button("Export Diagnostics…") { pairing.exportDiagnostics() }

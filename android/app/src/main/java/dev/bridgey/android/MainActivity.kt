@@ -322,6 +322,7 @@ private fun BridgeyApp(
 ) {
     val peers by discovery.peers.collectAsStateWithLifecycle()
     val pairingState by pairing.state.collectAsStateWithLifecycle()
+    val connectionHealth by pairing.connectionHealth.collectAsStateWithLifecycle()
     val trustedIds by pairing.trustedDeviceIds.collectAsStateWithLifecycle()
     val clipboardStatus by pairing.clipboardStatus.collectAsStateWithLifecycle()
     val fileTransfers by pairing.fileTransfers.collectAsStateWithLifecycle()
@@ -393,6 +394,8 @@ private fun BridgeyApp(
                 onAddSharedFolder = { settings.shareFolder(context.contentResolver, it) },
                 onRemoveSharedFolder = { settings.unshareFolder(context.contentResolver, it) },
                 onSharedFolderUploadsChanged = settings::setSharedFolderUploadsEnabled,
+                connectionHealth = connectionHealth,
+                batteryOptimizationIgnored = batteryOptimizationIgnored(LocalContext.current),
                 modifier = Modifier.padding(padding),
             )
         } else {
@@ -512,12 +515,18 @@ private fun BridgeyApp(
             content.files.isNotEmpty() -> "Send ${content.files.size} selected files to your Mac?"
             else -> "Send the shared text to your Mac?"
         }
+        val link = if (content.files.isEmpty()) content.text?.let(::sharedWebLink) else null
+        val sendLink = link != null && isConnected && pairing.isFeatureAvailable(BridgeyFeature.LINKS)
         AlertDialog(
             onDismissRequest = onSharedContentHandled,
             title = { Text("Share with Bridgey") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(summary)
+                    if (sendLink && link != null) {
+                        Text(stringResource(R.string.share_link_summary, linkHost(link)))
+                        Text(stringResource(R.string.share_link_detail), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else Text(summary)
                     when {
                         !isConnected -> Text(
                             "Waiting for a trusted Mac to reconnect.",
@@ -531,7 +540,12 @@ private fun BridgeyApp(
                 }
             },
             confirmButton = {
-                Button(
+                if (sendLink && link != null) {
+                    Button(onClick = {
+                        pairing.quickActions.sendLink(link)
+                        onSharedContentHandled()
+                    }) { Text(stringResource(R.string.share_link_send)) }
+                } else Button(
                     enabled = isConnected && featureAvailable,
                     onClick = {
                         content.text?.let { pairing.sendText(it) }
@@ -542,12 +556,11 @@ private fun BridgeyApp(
             },
             dismissButton = {
                 Row {
-                    if (content.files.isEmpty() && content.text?.let(::validatedWebLink) != null &&
-                        pairing.isFeatureAvailable(BridgeyFeature.LINKS)) {
-                        TextButton(onClick = {
-                            pairing.quickActions.sendLink(content.text.orEmpty())
+                    if (sendLink) {
+                        TextButton(enabled = featureAvailable, onClick = {
+                            content.text?.let { pairing.sendText(it) }
                             onSharedContentHandled()
-                        }) { Text("Send as link") }
+                        }) { Text(stringResource(R.string.share_link_as_text)) }
                     }
                     TextButton(onClick = onSharedContentHandled) { Text("Cancel") }
                 }
@@ -571,6 +584,8 @@ private fun SettingsScreen(
     onAddSharedFolder: (Uri) -> Unit,
     onRemoveSharedFolder: (SharedFolder) -> Unit,
     onSharedFolderUploadsChanged: (Boolean) -> Unit,
+    connectionHealth: ConnectionHealthSnapshot = ConnectionHealthSnapshot(),
+    batteryOptimizationIgnored: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var editedName by remember(state.deviceName) { mutableStateOf(state.deviceName) }
@@ -754,6 +769,7 @@ private fun SettingsScreen(
             }
         }
         item { SectionTitle("Diagnostics") }
+        item { ConnectionHealthCard(connectionHealth, batteryOptimizationIgnored) }
         item {
             Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -836,10 +852,11 @@ private fun DeviceScreen(
                     onPing = pairing::sendPing,
                 )
             }
-            if (enabledFeatures[BridgeyFeature.LINKS] == true || enabledFeatures[BridgeyFeature.MEDIA] == true) {
+            if (enabledFeatures[BridgeyFeature.LINKS] == true || enabledFeatures[BridgeyFeature.MEDIA] == true ||
+                enabledFeatures[BridgeyFeature.MAC_ACTIONS] == true) {
                 item {
                     QuickActionsCard(pairing.quickActions, enabledFeatures[BridgeyFeature.LINKS] == true,
-                        enabledFeatures[BridgeyFeature.MEDIA] == true)
+                        enabledFeatures[BridgeyFeature.MEDIA] == true, enabledFeatures[BridgeyFeature.MAC_ACTIONS] == true)
                 }
             }
         } else {
@@ -878,6 +895,9 @@ private fun DeviceScreen(
 
         item { SectionTitle("Services") }
         item { Text("Quick Settings: edit the tiles in your notification shade and add ‘Bridgey clipboard’ to send copied text.", style = MaterialTheme.typography.bodySmall) }
+        if (enabledFeatures[BridgeyFeature.MAC_ACTIONS] != false) {
+            item { Text(stringResource(R.string.services_controls_hint), style = MaterialTheme.typography.bodySmall) }
+        }
         item {
             ServiceCard(
                 enabled = appNotificationsEnabled,
