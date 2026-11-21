@@ -55,9 +55,12 @@ class StorageMigrationTest {
         val state = settings("v0.6.0-rc.2").state.value
         assertEquals(
             mapOf(
-                BridgeyFeature.CLIPBOARD to true, BridgeyFeature.FILES to true, BridgeyFeature.NOTIFICATIONS to true,
+                BridgeyFeature.CLIPBOARD to true, BridgeyFeature.FILES to true,
+                BridgeyFeature.FOLDERS to true, BridgeyFeature.FILES_BROWSE to true,
+                BridgeyFeature.NOTIFICATIONS to true,
                 BridgeyFeature.BATTERY to true, BridgeyFeature.FIND_DEVICE to true, BridgeyFeature.PING to true,
                 BridgeyFeature.LINKS to false, BridgeyFeature.MEDIA to true, BridgeyFeature.CALLS to false,
+                BridgeyFeature.MAC_ACTIONS to true, BridgeyFeature.SCREEN to false,
             ),
             state.globalFeatures,
         )

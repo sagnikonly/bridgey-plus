@@ -16,7 +16,7 @@ class LocalDataResetTest {
             assertTrue(version, preferences.values.isEmpty())
             val state = settings.state.value
             assertEquals("Default", state.deviceName)
-            assertTrue(state.globalFeatures.values.all { it })
+            assertTrue(state.globalFeatures.all { (feature, enabled) -> enabled == featureEnabledByDefault(feature) })
             assertTrue(state.deviceFeatures.isEmpty())
             assertTrue(state.notificationApplications.isEmpty())
             assertTrue(state.disabledNotificationPackages.isEmpty())
