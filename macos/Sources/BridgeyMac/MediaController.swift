@@ -4,10 +4,48 @@ import ImageIO
 import UniformTypeIdentifiers
 
 enum MediaPlayer: String, CaseIterable, Identifiable {
-    case off, music, spotify
+    case system, music, spotify, off
     var id: String { rawValue }
-    var title: String { switch self { case .off: "Off"; case .music: "Music"; case .spotify: "Spotify" } }
-    var bundleID: String { self == .music ? "com.apple.Music" : "com.spotify.client" }
+    var title: String {
+        switch self {
+        case .system: "Mac"
+        case .music: "Music"
+        case .spotify: "Spotify"
+        case .off: "Off"
+        }
+    }
+    var bundleID: String {
+        switch self {
+        case .music: "com.apple.Music"
+        case .spotify: "com.spotify.client"
+        case .system, .off: ""
+        }
+    }
+}
+
+private let nxKeyTypePlay: Int32 = 16
+private let nxKeyTypeNext: Int32 = 17
+private let nxKeyTypePrevious: Int32 = 18
+
+private func postSystemMediaKey(_ keyType: Int32) -> Bool {
+    func post(down: Bool) -> Bool {
+        let flags = NSEvent.ModifierFlags(rawValue: down ? 0xa00 : 0xb00)
+        let data1 = Int((keyType << 16) | (down ? 0xa00 : 0xb00))
+        guard let event = NSEvent.otherEvent(
+            with: .systemDefined,
+            location: .zero,
+            modifierFlags: flags,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            subtype: 8,
+            data1: data1,
+            data2: -1
+        ), let cgEvent = event.cgEvent else { return false }
+        cgEvent.post(tap: .cghidEventTap)
+        return true
+    }
+    return post(down: true) && post(down: false)
 }
 
 struct MediaSnapshot {
@@ -121,14 +159,63 @@ final class MediaController: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        player = MediaPlayer(rawValue: defaults.string(forKey: "media.player") ?? "") ?? .off
+        player = MediaPlayer(rawValue: defaults.string(forKey: "media.player") ?? "") ?? .system
         pauseForCalls = defaults.bool(forKey: "media.pauseForCalls")
     }
 
     func refresh() { perform(nil, completion: { _ in }) }
     func command(action: String, value: String, completion: @escaping (Bool) -> Void) {
+        if player == .system {
+            guard allowed() else { completion(false); return }
+            switch action {
+            case "toggle", "pause":
+                let ok = postSystemMediaKey(nxKeyTypePlay)
+                if ok {
+                    var updated = snapshot
+                    updated.playing = action == "pause" ? false : !snapshot.playing
+                    if updated.title.isEmpty { updated.title = "System media" }
+                    if updated.artist.isEmpty { updated.artist = "Last active app on Mac" }
+                    updated.detail = ""
+                    snapshot = updated
+                    onState(updated.payload(player: .system))
+                }
+                completion(ok)
+                refreshSystemMetadata()
+                return
+            case "next":
+                let ok = postSystemMediaKey(nxKeyTypeNext)
+                completion(ok)
+                refreshSystemMetadata()
+                return
+            case "previous":
+                let ok = postSystemMediaKey(nxKeyTypePrevious)
+                completion(ok)
+                refreshSystemMetadata()
+                return
+            default:
+                break
+            }
+        }
         guard let command = mediaCommand(action, value: value) else { completion(false); return }
         perform(command, completion: completion)
+    }
+
+    /// Refreshes metadata from Spotify or Music if running while in `.system` mode.
+    private func refreshSystemMetadata() {
+        guard player == .system, allowed() else { return }
+        let activeApp: MediaPlayer? = [MediaPlayer.spotify, MediaPlayer.music].first {
+            !NSRunningApplication.runningApplications(withBundleIdentifier: $0.bundleID).isEmpty
+        }
+        if let activeApp {
+            perform(nil, targetOverride: activeApp, completion: { _ in })
+        } else {
+            var current = snapshot
+            if current.title.isEmpty { current.title = "System media" }
+            if current.artist.isEmpty { current.artist = "Last active app on Mac" }
+            current.detail = ""
+            snapshot = current
+            onState(current.payload(player: .system))
+        }
     }
     func callChanged(active: Bool) {
         let shouldPause = active && !callActive && pauseForCalls
@@ -141,15 +228,31 @@ final class MediaController: ObservableObject {
     }
     func reset() { generation += 1; pendingPause = false; snapshot = MediaSnapshot() }
 
-    private func perform(_ command: String?, completion: @escaping (Bool) -> Void) {
+    private func perform(_ command: String?, targetOverride: MediaPlayer? = nil, completion: @escaping (Bool) -> Void) {
         guard allowed() else { snapshot = MediaSnapshot(); completion(false); return }
+        if player == .system && targetOverride == nil && command == nil {
+            refreshSystemMetadata()
+            completion(true)
+            return
+        }
         guard player != .off else {
-            snapshot = MediaSnapshot(detail: "Select Music or Spotify in Mac Settings → Media")
+            snapshot = MediaSnapshot(detail: "Select a player in Mac Settings → Media")
             onState(snapshot.payload(player: .off)); completion(false); return
         }
         guard !busy else { completion(false); return }
-        let selected = player
-        guard NSRunningApplication.runningApplications(withBundleIdentifier: selected.bundleID).isEmpty == false else {
+        let selected = targetOverride ?? player
+        guard !selected.bundleID.isEmpty,
+              NSRunningApplication.runningApplications(withBundleIdentifier: selected.bundleID).isEmpty == false else {
+            if player == .system {
+                var current = snapshot
+                if current.title.isEmpty { current.title = "System media" }
+                if current.artist.isEmpty { current.artist = "Last active app on Mac" }
+                current.detail = ""
+                snapshot = current
+                onState(current.payload(player: .system))
+                completion(true)
+                return
+            }
             snapshot = MediaSnapshot(detail: "Open \(selected.title) on your Mac")
             onState(snapshot.payload(player: selected)); completion(false); return
         }
@@ -206,7 +309,7 @@ final class MediaController: ObservableObject {
                         self.command(action: "pause", value: "", completion: { _ in })
                     }
                 }
-                guard epoch == self.generation, self.allowed(), self.player == selected else {
+                guard epoch == self.generation, self.allowed(), (self.player == selected || self.player == .system) else {
                     if command == nil { completion(false) }
                     return
                 }

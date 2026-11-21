@@ -62,6 +62,7 @@ class MacWidgetActionReceiver : BroadcastReceiver() {
                 val mediaAction = intent.getStringExtra(EXTRA_ACTION)
                     ?.takeIf { it in MEDIA_WIDGET_ACTIONS } ?: return
                 app.pairing.quickActions.request(BridgeyFeature.MEDIA, mediaAction)
+                updateMacWidgets(context)
             }
         }
     }
@@ -102,17 +103,17 @@ internal fun updateMacWidgets(
         val responsive = RemoteViews(
             mapOf(
                 SizeF(220f, 64f) to compact,
-                SizeF(220f, 130f) to standard,
-                SizeF(220f, 225f) to expanded,
+                SizeF(220f, 175f) to standard,
+                SizeF(220f, 295f) to expanded,
             ),
         )
         manager.updateAppWidget(ids, responsive)
     } else {
         ids.forEach { id ->
-            val minHeight = manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 140)
+            val minHeight = manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 180)
             val views = when {
-                minHeight < 115 -> buildCompactWidget(context, mac.name, battery, media.playing)
-                minHeight < 215 -> buildStandardWidget(context, mac.name, battery, clipboardSyncing, media.playing, muted)
+                minHeight < 140 -> buildCompactWidget(context, mac.name, battery, media.playing)
+                minHeight < 280 -> buildStandardWidget(context, mac.name, battery, clipboardSyncing, media.playing, muted)
                 else -> buildExpandedWidget(context, mac.name, battery, clipboardSyncing, media, muted)
             }
             manager.updateAppWidget(id, views)

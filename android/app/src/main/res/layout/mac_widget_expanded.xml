@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:padding="12dp">
 
     <!-- Header row -->
     <LinearLayout
@@ -76,19 +76,19 @@
     <LinearLayout
         android:id="@+id/widget_now_playing"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
-        android:layout_marginTop="8dp"
+        android:layout_height="58dp"
+        android:layout_marginTop="6dp"
         android:background="@drawable/widget_btn_tonal_24"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="8dp">
+        android:padding="6dp">
 
         <ImageView
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:background="@drawable/widget_btn_primary_16"
             android:importantForAccessibility="no"
-            android:padding="12dp"
+            android:padding="10dp"
             android:src="@drawable/ic_widget_music_primary" />
 
         <LinearLayout
@@ -161,7 +161,7 @@
         <LinearLayout
             android:id="@+id/widget_send_files"
             android:layout_width="0dp"
-            android:layout_height="52dp"
+            android:layout_height="48dp"
             android:layout_weight="3"
             android:background="@drawable/widget_btn_primary_20"
             android:contentDescription="Send files"
@@ -188,7 +188,7 @@
         <LinearLayout
             android:id="@+id/widget_clipboard"
             android:layout_width="0dp"
-            android:layout_height="52dp"
+            android:layout_height="48dp"
             android:layout_marginStart="8dp"
             android:layout_weight="2"
             android:background="@drawable/widget_btn_tonal_20"
@@ -223,7 +223,7 @@
         <LinearLayout
             android:id="@+id/widget_lock"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="50dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_tonal_18"
             android:contentDescription="Lock Mac"
@@ -231,15 +231,15 @@
             android:orientation="vertical">
 
             <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:importantForAccessibility="no"
                 android:src="@drawable/ic_widget_lock" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="2dp"
                 android:text="Lock"
                 android:textColor="@color/widget_on_tonal"
                 android:textSize="12sp" />
@@ -248,7 +248,7 @@
         <LinearLayout
             android:id="@+id/widget_display_sleep"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="50dp"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_tonal_18"
@@ -257,15 +257,15 @@
             android:orientation="vertical">
 
             <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:importantForAccessibility="no"
                 android:src="@drawable/ic_widget_display" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="2dp"
                 android:text="Display off"
                 android:textColor="@color/widget_on_tonal"
                 android:textSize="12sp" />
@@ -274,7 +274,7 @@
         <LinearLayout
             android:id="@+id/widget_sleep"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="50dp"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_tonal_18"
@@ -283,15 +283,15 @@
             android:orientation="vertical">
 
             <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:importantForAccessibility="no"
                 android:src="@drawable/ic_widget_sleep" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="2dp"
                 android:text="Sleep"
                 android:textColor="@color/widget_on_tonal"
                 android:textSize="12sp" />
@@ -302,24 +302,24 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="6dp"
         android:orientation="horizontal">
 
         <ImageButton
             android:id="@+id/widget_volume_down"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="44dp"
             android:layout_weight="1"
             android:background="@drawable/widget_vol_left"
             android:contentDescription="Volume down"
-            android:padding="12dp"
+            android:padding="10dp"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_widget_vol_down" />
 
         <LinearLayout
             android:id="@+id/widget_volume_mute"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="44dp"
             android:layout_marginHorizontal="2dp"
             android:layout_weight="1"
             android:background="@drawable/widget_vol_mid_tonal"
@@ -328,8 +328,8 @@
             android:orientation="horizontal">
 
             <ImageView
-                android:layout_width="20dp"
-                android:layout_height="20dp"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
                 android:layout_marginEnd="6dp"
                 android:importantForAccessibility="no"
                 android:src="@drawable/ic_widget_mute" />
@@ -346,11 +346,11 @@
         <ImageButton
             android:id="@+id/widget_volume_up"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="44dp"
             android:layout_weight="1"
             android:background="@drawable/widget_vol_right"
             android:contentDescription="Volume up"
-            android:padding="12dp"
+            android:padding="10dp"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_widget_vol_up" />
     </LinearLayout>

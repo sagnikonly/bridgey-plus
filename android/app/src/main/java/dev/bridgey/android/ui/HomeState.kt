@@ -73,7 +73,7 @@ fun computeHomeState(
     }
 
     val playerActive = mediaEnabled &&
-        media.player in setOf("Music", "Spotify") &&
+        media.player in setOf("Mac", "Music", "Spotify") &&
         media.detail.isEmpty() &&
         (media.playing || media.title.isNotEmpty())
 

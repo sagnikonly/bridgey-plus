@@ -67,7 +67,16 @@ class QuickActions(
 
     @Synchronized fun request(feature: BridgeyFeature, action: String, value: String = "") {
         if (!available(feature)) { mutableStatus.value = "Feature is unavailable on one of your devices"; return }
-        if (feature.key in pending) return
+        if (feature == BridgeyFeature.MEDIA) {
+            // Allow rapid media taps (play/pause, next, previous) without dropping them.
+            pending.remove(feature.key)?.second?.cancel()
+            if (action == "toggle" || action == "pause") {
+                val current = mutableMedia.value
+                mutableMedia.value = current.copy(playing = if (action == "pause") false else !current.playing)
+            }
+        } else if (feature.key in pending) {
+            return
+        }
         val id = UUID.randomUUID().toString()
         val expiry = scope.launch {
             delay(8000)
