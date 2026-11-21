@@ -1,6 +1,7 @@
 package dev.bridgey.android
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentValues
@@ -359,6 +360,13 @@ class PairingCoordinator(
         pairingSession = null
         pairingFlow = PairingState.Failed(message)
         publish()
+    }
+
+    /** Forgets every trusted device, ends the current session and clears the finished transfers. */
+    fun forgetAllDevices() {
+        trust.trustedDeviceIds.value.forEach(::forget)
+        dismiss()
+        clearTransferHistory()
     }
 
     fun updateDeviceName(value: String) {
@@ -1273,7 +1281,7 @@ class PairingCoordinator(
                 try {
                     val line = current.input.readProtocolLine() ?: break
                     current.lastReceivedAtMillis = SystemClock.elapsedRealtime()
-                    receive(current, Message.decode(line))
+                    receive(current, decodeProtocolMessage(line))
                 } catch (_: SocketTimeoutException) {
                     if (!registry.contains(current)) break
                     if (registry.isActive(current)) {
@@ -2271,17 +2279,10 @@ class PairingCoordinator(
             message.nonce ?: return,
             message.ciphertext ?: return,
         ) ?: return fail("Invalid encrypted feature state")
-        val payload = runCatching { JSONObject(plaintext.toString(Charsets.UTF_8)) }.getOrNull()
-            ?: return fail("Invalid feature state")
-        val values = payload.optJSONObject("features") ?: return fail("Invalid feature state")
-        if (payload.optInt("version") != 1) return
-        val received = BridgeyFeature.entries.associateWith { feature ->
-            if (!values.has(feature.key)) {
-                if (!featureEnabledByLegacyPeer(feature)) return@associateWith false
-                return fail("Invalid feature state")
-            }
-            if (values.opt(feature.key) !is Boolean) return fail("Invalid feature state")
-            values.getBoolean(feature.key)
+        val received = when (val decoded = decodeFeatureState(plaintext)) {
+            FeatureStateDecoding.Invalid -> return fail("Invalid feature state")
+            FeatureStateDecoding.Ignored -> return
+            is FeatureStateDecoding.State -> decoded.features
         }
         registry.update(current.remoteDeviceId) { link ->
             link.copy(
@@ -2318,14 +2319,10 @@ class PairingCoordinator(
             message.nonce ?: return fail("Invalid encrypted battery status"),
             message.ciphertext ?: return fail("Invalid encrypted battery status"),
         ) ?: return fail("Invalid encrypted battery status")
-        val payload = runCatching { JSONObject(plaintext.toString(Charsets.UTF_8)) }.getOrNull()
-            ?: return fail("Invalid battery status")
-        val level = payload.optInt("level", -1)
-        if (level !in 0..100 || payload.opt("isCharging") !is Boolean) return fail("Invalid battery status")
-        val battery = RemoteBatteryStatus(level, payload.getBoolean("isCharging"))
-        registry.update(current.remoteDeviceId) { it.copy(battery = battery) }
+        val status = decodeBatteryStatus(plaintext) ?: return fail("Invalid battery status")
+        registry.update(current.remoteDeviceId) { it.copy(battery = status) }
         publish()
-        android.util.Log.i("Bridgey", "PLUGIN battery received level=$level")
+        android.util.Log.i("Bridgey", "PLUGIN battery received level=${status.level}")
     }
 
     /**
@@ -2400,7 +2397,7 @@ class PairingCoordinator(
         val startedAtMillis = SystemClock.elapsedRealtime()
         @Volatile var lastReceivedAtMillis = SystemClock.elapsedRealtime()
         @Volatile var heartbeatSupported = false
-        private val seenMessageIds = LinkedHashSet<String>()
+        private val replayWindow = ReplayWindow()
 
         @Synchronized fun send(message: Message): Boolean {
             val result = runCatching {
@@ -2428,11 +2425,7 @@ class PairingCoordinator(
             return send(Message(kind = kind, sessionId = id, nonce = encrypted.nonce, ciphertext = encrypted.ciphertext))
         }
 
-        @Synchronized fun acceptMessageId(id: String): Boolean {
-            if (!seenMessageIds.add(id)) return false
-            while (seenMessageIds.size > 256) seenMessageIds.remove(seenMessageIds.first())
-            return true
-        }
+        fun acceptMessageId(id: String): Boolean = replayWindow.accept(id)
     }
 }
 
@@ -2651,7 +2644,7 @@ private fun parseFolderEntries(array: JSONArray): List<FolderEntry>? {
     return entries
 }
 
-private data class Message(
+internal data class Message(
     val kind: String,
     val sessionId: String,
     val deviceId: String? = null,
@@ -2681,26 +2674,6 @@ private data class Message(
         transferId?.let { put("transferId", it) }
         sequence?.let { put("sequence", it) }
     }.toString()
-
-    companion object {
-        fun decode(value: String): Message = JSONObject(value).let {
-            Message(
-                kind = it.getString("kind"),
-                sessionId = it.getString("sessionId"),
-                deviceId = it.optString("deviceId").takeIf(String::isNotEmpty),
-                deviceName = it.optString("deviceName").takeIf(String::isNotEmpty),
-                publicKey = it.optString("publicKey").takeIf(String::isNotEmpty),
-                identityKey = it.optString("identityKey").takeIf(String::isNotEmpty),
-                proof = it.optString("proof").takeIf(String::isNotEmpty),
-                signature = it.optString("signature").takeIf(String::isNotEmpty),
-                messageId = it.optString("messageId").takeIf(String::isNotEmpty),
-                nonce = it.optString("nonce").takeIf(String::isNotEmpty),
-                ciphertext = it.optString("ciphertext").takeIf(String::isNotEmpty),
-                transferId = it.optString("transferId").takeIf(String::isNotEmpty),
-                sequence = if (it.has("sequence")) it.getLong("sequence") else null,
-            )
-        }
-    }
 }
 
 internal object Crypto {
@@ -2846,8 +2819,10 @@ private class AndroidIdentity(context: Context) {
     }
 }
 
-private class AndroidTrustRegistry(context: Context) {
-    private val preferences = context.getSharedPreferences("bridgey.trust", Context.MODE_PRIVATE)
+/** Trusted peers in SharedPreferences `bridgey.trust`: `peer.<deviceId>.name` and `peer.<deviceId>.identityKey`. */
+internal class AndroidTrustRegistry(private val preferences: SharedPreferences) {
+    constructor(context: Context) : this(context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE))
+
     private val mutableIds = MutableStateFlow(loadIds())
     val trustedDeviceIds: StateFlow<Set<String>> = mutableIds.asStateFlow()
     private val mutableDevices = MutableStateFlow(loadDevices())
@@ -2858,6 +2833,12 @@ private class AndroidTrustRegistry(context: Context) {
             .putString("peer.$deviceId.name", name)
             .putString("peer.$deviceId.identityKey", identityKey)
             .apply()
+        mutableIds.value = loadIds()
+        mutableDevices.value = loadDevices()
+    }
+
+    fun clear() {
+        preferences.edit().clear().commit()
         mutableIds.value = loadIds()
         mutableDevices.value = loadDevices()
     }
@@ -2882,4 +2863,8 @@ private class AndroidTrustRegistry(context: Context) {
     private fun loadDevices(): List<TrustedDevice> = loadIds().map { id ->
         TrustedDevice(id, preferences.getString("peer.$id.name", null) ?: "Unknown device")
     }.sortedBy { it.name.lowercase() }
+
+    companion object {
+        const val PREFERENCES_NAME = "bridgey.trust"
+    }
 }
