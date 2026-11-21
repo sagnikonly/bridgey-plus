@@ -105,6 +105,22 @@ data class TrustedDevice(val id: String, val name: String)
 
 data class RemoteBatteryStatus(val level: Int, val isCharging: Boolean)
 
+enum class ActivityEventKind {
+    CLIPBOARD_SENT,
+    CLIPBOARD_RECEIVED,
+    LINK,
+    PING,
+}
+
+data class ActivityEvent(
+    val id: String = UUID.randomUUID().toString(),
+    val kind: ActivityEventKind,
+    val title: String,
+    val subtitle: String,
+    val payloadText: String? = null,
+    val timestampMillis: Long = System.currentTimeMillis(),
+)
+
 class PairingCoordinator(
     context: Context,
     private val localDeviceId: String,
@@ -124,6 +140,12 @@ class PairingCoordinator(
     @Volatile private var localDeviceName = localDeviceName
     private val mutableClipboardStatus = MutableStateFlow<String?>(null)
     val clipboardStatus: StateFlow<String?> = mutableClipboardStatus.asStateFlow()
+    private val mutableLastClipboardPreview = MutableStateFlow<String?>(null)
+    val lastClipboardPreview: StateFlow<String?> = mutableLastClipboardPreview.asStateFlow()
+    private val mutableClipboardSyncPaused = MutableStateFlow(false)
+    val clipboardSyncPaused: StateFlow<Boolean> = mutableClipboardSyncPaused.asStateFlow()
+    private val mutableActivityEvents = MutableStateFlow<List<ActivityEvent>>(emptyList())
+    val activityEvents: StateFlow<List<ActivityEvent>> = mutableActivityEvents.asStateFlow()
     private val pendingClipboardSends = ConcurrentHashMap<String, (ClipboardSendResult) -> Unit>()
     @Volatile private var lastSyncedClipboard: ClipboardSnapshot? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -406,7 +428,24 @@ class PairingCoordinator(
         }
     }
 
+    fun setClipboardSyncPaused(paused: Boolean) {
+        mutableClipboardSyncPaused.value = paused
+    }
+
+    fun clearActivityEvents() {
+        mutableActivityEvents.value = emptyList()
+    }
+
+    private fun recordActivityEvent(kind: ActivityEventKind, title: String, subtitle: String, payloadText: String? = null) {
+        val event = ActivityEvent(kind = kind, title = title, subtitle = subtitle, payloadText = payloadText)
+        mutableActivityEvents.value = (listOf(event) + mutableActivityEvents.value).take(50)
+    }
+
+    private fun formatClipboardPreview(text: String): String =
+        text.trim().replace(Regex("\\s+"), " ").take(60)
+
     fun syncClipboardIfChanged() {
+        if (mutableClipboardSyncPaused.value) return
         if (mutableState.value !is PairingState.Connected || !isFeatureAvailable(BridgeyFeature.CLIPBOARD)) return
         val clipboard = appContext.getSystemService(ClipboardManager::class.java) ?: return
         val clip = runCatching { clipboard.primaryClip }.getOrNull() ?: return
@@ -474,6 +513,14 @@ class PairingCoordinator(
         }
         val richContent = RichClipboardContent.create(text, html)
         lastSyncedClipboard = ClipboardSnapshot(text, richContent?.html)
+        val preview = formatClipboardPreview(text)
+        mutableLastClipboardPreview.value = preview
+        recordActivityEvent(
+            kind = ActivityEventKind.CLIPBOARD_SENT,
+            title = preview,
+            subtitle = "Sent to Mac · tap to re-send",
+            payloadText = text,
+        )
         scope.launch {
             val current = connectedSession
             if (!registry.isActive(current)) {
@@ -1568,17 +1615,28 @@ class PairingCoordinator(
             message.nonce ?: return,
             message.ciphertext ?: return,
         ) ?: return fail("Invalid encrypted clipboard message")
+        val receivedText: String
         val clip = if (rich) {
             val content = RichClipboardContent.decode(plaintext)
                 ?: return fail("Invalid rich clipboard message")
+            receivedText = content.text
             lastSyncedClipboard = ClipboardSnapshot(content.text, content.html)
             ClipData.newHtmlText("Bridgey", content.text, content.html)
         } else {
             val text = plaintext.toString(Charsets.UTF_8)
             if (!clipboardTextFits(text)) return fail("Invalid clipboard message")
+            receivedText = text
             lastSyncedClipboard = ClipboardSnapshot(text, null)
             ClipData.newPlainText("Bridgey", text)
         }
+        val preview = formatClipboardPreview(receivedText)
+        mutableLastClipboardPreview.value = preview
+        recordActivityEvent(
+            kind = ActivityEventKind.CLIPBOARD_RECEIVED,
+            title = preview,
+            subtitle = "Copied from ${current.peerName} · tap to copy",
+            payloadText = receivedText,
+        )
         appContext.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
         diagnostics.record("clipboard", if (rich) "rich_received" else "text_received")
         android.util.Log.i("Bridgey", "PLUGIN clipboard received")
