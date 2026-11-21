@@ -1,8 +1,17 @@
 package dev.bridgey.android
 
+import android.content.ClipDescription
 import org.json.JSONObject
 
 internal const val MAX_CLIPBOARD_CONTENT_BYTES = 32 * 1024
+private const val EXTRA_IS_SENSITIVE_KEY = "android.content.extra.IS_SENSITIVE"
+
+internal data class ClipboardSnapshot(val text: String, val html: String?)
+
+internal fun isSensitiveClip(description: ClipDescription?): Boolean {
+    val extras = description?.extras ?: return false
+    return extras.getBoolean(EXTRA_IS_SENSITIVE_KEY, false)
+}
 
 internal data class RichClipboardContent(val text: String, val html: String) {
     fun encode(): ByteArray = JSONObject()

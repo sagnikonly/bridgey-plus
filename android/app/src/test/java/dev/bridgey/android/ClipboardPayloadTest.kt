@@ -1,6 +1,8 @@
 package dev.bridgey.android
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -15,5 +17,17 @@ class ClipboardPayloadTest {
     @Test fun clipboardContentIsBoundedBeforeEncryption() {
         assertTrue(clipboardTextFits("x".repeat(MAX_CLIPBOARD_CONTENT_BYTES)))
         assertNull(RichClipboardContent.create("x".repeat(MAX_CLIPBOARD_CONTENT_BYTES), "<b>x</b>"))
+    }
+
+    @Test fun clipboardSnapshotTracksTextAndHtmlChanges() {
+        assertEquals(
+            ClipboardSnapshot("hello", "<b>hello</b>"),
+            ClipboardSnapshot("hello", "<b>hello</b>"),
+        )
+        assertNotEquals(
+            ClipboardSnapshot("hello", null),
+            ClipboardSnapshot("hello", "<b>hello</b>"),
+        )
+        assertFalse(isSensitiveClip(null))
     }
 }

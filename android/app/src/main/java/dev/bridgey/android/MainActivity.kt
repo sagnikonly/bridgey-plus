@@ -164,6 +164,13 @@ class MainActivity : ComponentActivity() {
         refreshPermissionState()
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && ::pairing.isInitialized) {
+            pairing.syncClipboardIfChanged()
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

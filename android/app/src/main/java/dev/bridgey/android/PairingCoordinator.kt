@@ -114,6 +114,10 @@ class PairingCoordinator(
     private val mutableClipboardStatus = MutableStateFlow<String?>(null)
     val clipboardStatus: StateFlow<String?> = mutableClipboardStatus.asStateFlow()
     private val pendingClipboardSends = ConcurrentHashMap<String, (ClipboardSendResult) -> Unit>()
+    @Volatile private var lastSyncedClipboard: ClipboardSnapshot? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var clipboardListenerRegistered = false
+    private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener { syncClipboardIfChanged() }
     private val pendingFileAccepts = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
     private val pendingFileCompletions = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
     private val mutableFileTransferStatus = MutableStateFlow<String?>(null)
@@ -159,6 +163,7 @@ class PairingCoordinator(
     }
 
     fun start() {
+        registerClipboardListener()
         if (acceptJob != null) return
         diagnostics.record("transport", "listener_started")
         acceptJob = scope.launch {
@@ -243,45 +248,83 @@ class PairingCoordinator(
         }
     }
 
+    fun syncClipboardIfChanged() {
+        if (mutableState.value !is PairingState.Connected || !isFeatureAvailable(BridgeyFeature.CLIPBOARD)) return
+        val clipboard = appContext.getSystemService(ClipboardManager::class.java) ?: return
+        val clip = runCatching { clipboard.primaryClip }.getOrNull() ?: return
+        if (clip.itemCount == 0 || isSensitiveClip(clip.description)) return
+        val item = clip.getItemAt(0)
+        val text = item.coerceToText(appContext)?.toString() ?: return
+        if (text.isEmpty() || !clipboardTextFits(text)) return
+        val richContent = RichClipboardContent.create(text, item.htmlText)
+        val snapshot = ClipboardSnapshot(text, richContent?.html)
+        if (snapshot == lastSyncedClipboard) return
+        sendClipboardContent(text, richContent?.html, automatic = true)
+    }
+
+    private fun registerClipboardListener() {
+        mainHandler.post {
+            if (clipboardListenerRegistered) return@post
+            runCatching {
+                appContext.getSystemService(ClipboardManager::class.java)
+                    ?.addPrimaryClipChangedListener(clipboardListener)
+                clipboardListenerRegistered = true
+            }
+        }
+    }
+
+    private fun unregisterClipboardListener() {
+        mainHandler.post {
+            if (!clipboardListenerRegistered) return@post
+            runCatching {
+                appContext.getSystemService(ClipboardManager::class.java)
+                    ?.removePrimaryClipChangedListener(clipboardListener)
+            }
+            clipboardListenerRegistered = false
+        }
+    }
+
     fun sendText(text: String, onResult: (ClipboardSendResult) -> Unit = {}) =
         sendClipboardContent(text, html = null, onResult = onResult)
 
     private fun sendClipboardContent(
         text: String,
         html: String?,
+        automatic: Boolean = false,
         onResult: (ClipboardSendResult) -> Unit = {},
     ) {
         if (!isFeatureAvailable(BridgeyFeature.CLIPBOARD)) {
-            mutableClipboardStatus.value = "Clipboard is turned off on one of your devices"
+            if (!automatic) mutableClipboardStatus.value = "Clipboard is turned off on one of your devices"
             onResult(ClipboardSendResult.DISABLED)
             return
         }
         if (text.isEmpty()) {
-            mutableClipboardStatus.value = "Clipboard is empty"
+            if (!automatic) mutableClipboardStatus.value = "Clipboard is empty"
             onResult(ClipboardSendResult.EMPTY)
             return
         }
         if (!clipboardTextFits(text)) {
-            mutableClipboardStatus.value = "Clipboard exceeds 32 KiB. Send large text or diagnostics as a file."
+            if (!automatic) mutableClipboardStatus.value = "Clipboard exceeds 32 KiB. Send large text or diagnostics as a file."
             onResult(ClipboardSendResult.TOO_LARGE)
             return
         }
         val connectedSession = session
         if (connectedSession == null || mutableState.value !is PairingState.Connected) {
-            mutableClipboardStatus.value = "Not connected — clipboard was not sent"
+            if (!automatic) mutableClipboardStatus.value = "Not connected — clipboard was not sent"
             onResult(ClipboardSendResult.NOT_CONNECTED)
             return
         }
+        val richContent = RichClipboardContent.create(text, html)
+        lastSyncedClipboard = ClipboardSnapshot(text, richContent?.html)
         scope.launch {
             val current = connectedSession
             if (session !== current || mutableState.value !is PairingState.Connected) {
-                mutableClipboardStatus.value = "Not connected — clipboard was not sent"
+                if (!automatic) mutableClipboardStatus.value = "Not connected — clipboard was not sent"
                 onResult(ClipboardSendResult.NOT_CONNECTED)
                 return@launch
             }
             val messageId = UUID.randomUUID().toString()
             pendingClipboardSends[messageId] = onResult
-            val richContent = RichClipboardContent.create(text, html)
             val plaintext = richContent?.encode() ?: text.toByteArray(Charsets.UTF_8)
             val encrypted = Crypto.encrypt(current.pairingKey!!, plaintext)
             val message = Message(
@@ -810,6 +853,7 @@ class PairingCoordinator(
     }
 
     fun pause() {
+        unregisterClipboardListener()
         val current = session
         session = null
         current?.close()
@@ -1134,10 +1178,12 @@ class PairingCoordinator(
         val clip = if (rich) {
             val content = RichClipboardContent.decode(plaintext)
                 ?: return fail("Invalid rich clipboard message")
+            lastSyncedClipboard = ClipboardSnapshot(content.text, content.html)
             ClipData.newHtmlText("Bridgey", content.text, content.html)
         } else {
             val text = plaintext.toString(Charsets.UTF_8)
             if (!clipboardTextFits(text)) return fail("Invalid clipboard message")
+            lastSyncedClipboard = ClipboardSnapshot(text, null)
             ClipData.newPlainText("Bridgey", text)
         }
         appContext.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)

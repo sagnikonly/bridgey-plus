@@ -214,6 +214,9 @@ final class PairingCoordinator: ObservableObject {
     private var remoteFeatureStateReceived = false
     private var clipboardSendID: String?
     private var clipboardTimeoutWorkItem: DispatchWorkItem?
+    private var clipboardMonitorTimer: Timer?
+    private var lastObservedPasteboardChangeCount = NSPasteboard.general.changeCount
+    private var lastSyncedClipboard: ClipboardSnapshot?
     private let notificationPresenter = NotificationPresenter()
     private var remoteNotificationCategories: [String: UNNotificationCategory] = [:]
     private var incomingFiles: [String: IncomingFileTransfer] = [:]
@@ -302,7 +305,12 @@ final class PairingCoordinator: ObservableObject {
                     if !self.featureEnabled(.ping) { self.clearPingStatus() }
                     if !self.isFeatureAvailable(.links) { self.quickActions.reset() }
                     self.mediaController.reset()
-                    if !self.featureEnabled(.clipboard) { self.clearClipboardSendStatus() }
+                    if !self.featureEnabled(.clipboard) {
+                        self.clearClipboardSendStatus()
+                        self.stopClipboardMonitor()
+                    } else if case .connected = self.state {
+                        self.startClipboardMonitor()
+                    }
                     if !self.featureEnabled(.notifications) { self.clearRemoteCall() }
                     if !self.featureEnabled(.calls) {
                         self.clearPendingCall()
@@ -444,6 +452,7 @@ final class PairingCoordinator: ObservableObject {
         clearPendingCall()
         clearCallStatus()
         clearClipboardSendStatus()
+        stopClipboardMonitor()
         clearPingStatus()
         quickActions.reset()
         mediaController.reset()
@@ -466,6 +475,7 @@ final class PairingCoordinator: ObservableObject {
         clearPendingCall()
         clearCallStatus()
         clearClipboardSendStatus()
+        stopClipboardMonitor()
         clearPingStatus()
         quickActions.reset()
         mediaController.reset()
@@ -607,18 +617,18 @@ final class PairingCoordinator: ObservableObject {
         )
     }
 
-    func sendClipboard() {
+    func sendClipboard(automatic: Bool = false) {
         guard let current = session, case .connected = state else { return }
         guard isFeatureAvailable(.clipboard) else {
-            clipboardStatus = "Clipboard is turned off on one of your devices"
+            if !automatic { clipboardStatus = "Clipboard is turned off on one of your devices" }
             return
         }
         guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
-            clipboardStatus = "Clipboard is empty or unavailable"
+            if !automatic { clipboardStatus = "Clipboard is empty or unavailable" }
             return
         }
         guard clipboardTextFits(text) else {
-            clipboardStatus = "Clipboard exceeds 32 KiB. Send large text or diagnostics as a file."
+            if !automatic { clipboardStatus = "Clipboard exceeds 32 KiB. Send large text or diagnostics as a file." }
             return
         }
         let html = NSPasteboard.general.data(forType: .html)
@@ -626,9 +636,11 @@ final class PairingCoordinator: ObservableObject {
         let richContent = RichClipboardContent(text: text, html: html)
         let plaintext = richContent.flatMap { try? JSONEncoder().encode($0) } ?? Data(text.utf8)
         guard let encrypted = try? encrypt(plaintext, key: current.pairingKey!) else {
-            clipboardStatus = "Encryption failed"
+            if !automatic { clipboardStatus = "Encryption failed" }
             return
         }
+        lastObservedPasteboardChangeCount = NSPasteboard.general.changeCount
+        lastSyncedClipboard = ClipboardSnapshot(text: text, html: richContent?.html)
         let messageID = UUID().uuidString.lowercased()
         current.send(PairingMessage(
             kind: richContent == nil ? "clipboard.update" : "clipboard.rich",
@@ -651,6 +663,39 @@ final class PairingCoordinator: ObservableObject {
         clipboardTimeoutWorkItem = timeout
         DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: timeout)
         NSLog("PLUGIN clipboard sent")
+    }
+
+    private func startClipboardMonitor() {
+        guard clipboardMonitorTimer == nil, isFeatureAvailable(.clipboard) else { return }
+        lastObservedPasteboardChangeCount = NSPasteboard.general.changeCount
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.checkPasteboardForAutoSync()
+            }
+        }
+        timer.tolerance = 0.1
+        clipboardMonitorTimer = timer
+    }
+
+    private func stopClipboardMonitor() {
+        clipboardMonitorTimer?.invalidate()
+        clipboardMonitorTimer = nil
+    }
+
+    private func checkPasteboardForAutoSync() {
+        guard case .connected = state, isFeatureAvailable(.clipboard) else { return }
+        let pasteboard = NSPasteboard.general
+        let currentCount = pasteboard.changeCount
+        guard currentCount != lastObservedPasteboardChangeCount else { return }
+        lastObservedPasteboardChangeCount = currentCount
+        guard shouldAutoSyncPasteboard(types: pasteboard.types) else { return }
+        guard let text = pasteboard.string(forType: .string), !text.isEmpty, clipboardTextFits(text) else { return }
+        let html = pasteboard.data(forType: .html)
+            .flatMap { String(data: $0, encoding: .utf8) }
+        let richContent = RichClipboardContent(text: text, html: html)
+        let snapshot = ClipboardSnapshot(text: text, html: richContent?.html)
+        guard snapshot != lastSyncedClipboard else { return }
+        sendClipboard(automatic: true)
     }
 
     private func clearClipboardSendStatus() {
@@ -1108,6 +1153,7 @@ final class PairingCoordinator: ObservableObject {
             self.heartbeatWorkItem?.cancel()
             self.cancelIncomingFiles()
             self.clearClipboardSendStatus()
+            self.stopClipboardMonitor()
             self.clearCallStatus()
             if !self.outgoingFiles.isEmpty {
                 self.outgoingFiles.values.forEach { $0.cancel() }
@@ -1253,7 +1299,12 @@ final class PairingCoordinator: ObservableObject {
                 mediaController.refresh()
                 if remoteFeatures[.battery] == false { remoteBattery = nil }
                 if remoteFeatures[.ping] == false { clearPingStatus() }
-                if remoteFeatures[.clipboard] == false { clearClipboardSendStatus() }
+                if remoteFeatures[.clipboard] == false {
+                    clearClipboardSendStatus()
+                    stopClipboardMonitor()
+                } else if case .connected = state {
+                    startClipboardMonitor()
+                }
                 if remoteFeatures[.notifications] == false { clearRemoteCall() }
                 if remoteFeatures[.calls] == false { clearCallStatus() }
                 if remoteFeatures[.files] == false && fileTransferActive {
@@ -1308,6 +1359,8 @@ final class PairingCoordinator: ObservableObject {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
                 if let html { NSPasteboard.general.setData(Data(html.utf8), forType: .html) }
+                lastObservedPasteboardChangeCount = NSPasteboard.general.changeCount
+                lastSyncedClipboard = ClipboardSnapshot(text: text, html: html)
                 diagnostics.record(category: "clipboard", event: html == nil ? "text_received" : "rich_received")
                 NSLog("PLUGIN clipboard received")
                 current.send(PairingMessage(kind: "clipboard.ack", sessionId: current.id, messageId: messageID))
@@ -1574,6 +1627,7 @@ final class PairingCoordinator: ObservableObject {
             reconnectWorkItem?.cancel()
             sendFeatureState()
             publishLocalBattery(force: true)
+            startClipboardMonitor()
             scheduleHeartbeat(for: current)
             NSLog("PAIRING verified peer=%@", current.peerName)
         }
